@@ -1,0 +1,117 @@
+# perm.manifest.yaml — sumber kebenaran permissions & menu service ini.
+# Self-sync otomatis ke Permission Service setiap kali service boot (idempotent).
+service:
+  name: scheduling
+  description: "Scheduling Service — master data akademik (gedung/ruang/MK/dosen/rombel) & penjadwalan otomatis universitas"
+  base_url: ""
+  sync_enabled: true
+
+permissions:
+  # Fasilitas (gedung & ruang)
+  - permission: facilities.read
+    description: Lihat gedung & ruang
+  - permission: facilities.write
+    description: Kelola gedung & ruang (CRUD, import)
+  # Akademik (MK, dosen, rombel, offering, term)
+  - permission: academics.read
+    description: Lihat data akademik (MK/dosen/rombel/penawaran/semester)
+  - permission: academics.write
+    description: Kelola data akademik (CRUD)
+  # Slot waktu
+  - permission: timeslots.read
+    description: Lihat template slot waktu
+  - permission: timeslots.write
+    description: Kelola template slot waktu
+  # Import massal
+  - permission: imports.write
+    description: Import CSV/Excel master data
+  # Solver (F1, disiapkan)
+  - permission: solve.execute
+    description: Menjalankan proses penjadwalan (solve job)
+  - permission: solve.read
+    description: Melihat status & hasil solve job
+  # Jadwal publish (F3, disiapkan)
+  - permission: schedules.read
+    description: Melihat jadwal tersimpan (versi/entries)
+  - permission: schedules.write
+    description: Kelola versi jadwal (review/publish/lock)
+  # Consumer API (doorlock & sistem eksternal)
+  - permission: consumers.read
+    description: Membaca jadwal ruang (consumer API doorlock/aplikasi eksternal)
+
+menu:
+  - label: "Scheduling"
+    path: /dashboard/scheduling
+    icon: CalendarDays
+    sort_order: 30
+    children:
+      - label: Gedung & Ruang
+        path: /dashboard/scheduling/rooms
+        icon: Building2
+        required_permission: facilities.read
+        sort_order: 1
+      - label: Tipe Ruang
+        path: /dashboard/scheduling/room-types
+        icon: Shapes
+        required_permission: facilities.read
+        sort_order: 2
+      - label: Fasilitas Ruang
+        path: /dashboard/scheduling/facility-types
+        icon: Wrench
+        required_permission: facilities.read
+        sort_order: 3
+      - label: Mata Kuliah
+        path: /dashboard/scheduling/courses
+        icon: BookOpen
+        required_permission: academics.read
+        sort_order: 4
+      - label: Tipe Mata Kuliah
+        path: /dashboard/scheduling/course-types
+        icon: Tags
+        required_permission: academics.read
+        sort_order: 5
+      - label: Dosen
+        path: /dashboard/scheduling/lecturers
+        icon: GraduationCap
+        required_permission: academics.read
+        sort_order: 6
+      - label: Rombel
+        path: /dashboard/scheduling/class-groups
+        icon: Users
+        required_permission: academics.read
+        sort_order: 7
+      - label: Penawaran MK
+        path: /dashboard/scheduling/offerings
+        icon: ClipboardList
+        required_permission: academics.read
+        sort_order: 8
+      - label: Ketersediaan Dosen
+        path: /dashboard/scheduling/availability
+        icon: UserCheck
+        required_permission: academics.read
+        sort_order: 9
+      - label: Slot Waktu
+        path: /dashboard/scheduling/time-slots
+        icon: Clock
+        required_permission: timeslots.read
+        sort_order: 10
+      - label: Semester
+        path: /dashboard/scheduling/terms
+        icon: CalendarRange
+        required_permission: academics.read
+        sort_order: 11
+      - label: Penjadwalan
+        path: /dashboard/scheduling/solve
+        icon: CalendarClock
+        required_permission: solve.read
+        sort_order: 0
+      - label: Jadwal Saya
+        path: /dashboard/scheduling/my-schedule
+        icon: CalendarDays
+        required_permission: schedules.read
+        sort_order: 13
+      - label: Pengaturan Penjadwalan
+        path: /dashboard/scheduling/weights
+        icon: SlidersHorizontal
+        required_permission: solve.execute
+        sort_order: 14

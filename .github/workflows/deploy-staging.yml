@@ -1,0 +1,62 @@
+# CI/CD B-Wise Backend — deploy staging (repo: b-wise-backend)
+# Service: permission, human-capital, iku (scheduling menyusul — solver python perlu penanganan khusus)
+# SSO ada di repo terpisah (sso-binawan) — urutan deploy gak kaku: HC self-sync punya retry.
+name: deploy-staging
+on:
+  push:
+    branches: [development, staging]
+  workflow_dispatch:
+
+concurrency:
+  group: backend-staging
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: permission
+            dir: permission-service
+            main: ./cmd/server
+          - name: human-capital
+            dir: human-capital
+            main: ./cmd/server
+          - name: iku
+            dir: iku
+            main: ./cmd/server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.25" }
+      - run: cd ${{ matrix.dir }} && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /tmp/server ${{ matrix.main }}
+      - uses: actions/upload-artifact@v4
+        with: { name: backend-${{ matrix.name }}, path: /tmp/server }
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: artifacts }
+      - name: SSH setup
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.STAGING_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p ${{ secrets.STAGING_PORT || 22 }} ${{ secrets.STAGING_HOST }} >> ~/.ssh/known_hosts
+      - name: Deploy semua service (swap binary + restart satu-satu)
+        run: |
+          SSH="ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.STAGING_PORT || 22 }} ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }}"
+          declare -A DIRS=( [permission]=permission [human-capital]=human-capital [iku]=iku )
+          for svc in permission human-capital iku; do
+            scp -i ~/.ssh/id_ed25519 -P ${{ secrets.STAGING_PORT || 22 }} artifacts/backend-$svc/server ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }}:/tmp/bwise-$svc
+            $SSH "dir=/opt/bwise/${DIRS[$svc]}; sudo cp \$dir/server \$dir/server.prev 2>/dev/null; sudo install -m 755 /tmp/bwise-$svc \$dir/server && sudo systemctl restart bwise-$svc"
+          done
+      - name: Health check
+        run: |
+          sleep 5
+          ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.STAGING_PORT || 22 }} ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} \
+            "for p in 8081 8082 8083; do curl -sf --max-time 10 http://127.0.0.1:\$p/health || exit 1; done" || exit 1
+          echo "✅ Backend staging sehat"

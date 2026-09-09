@@ -1,0 +1,158 @@
+# perm.manifest.yaml — sumber kebenaran permissions & menu human-capital.
+# Self-sync otomatis ke Permission Service setiap boot (idempotent).
+service:
+  name: human-capital
+  description: "Human Capital / HRM service (Frappe HR-aligned)"
+  base_url: ""
+  sync_enabled: true
+
+permissions:
+  - permission: employees.read
+    description: Lihat data pegawai
+  - permission: employees.write
+    description: Tambah/ubah data pegawai (non-employment fields)
+  - permission: employees.delete
+    description: Hapus (soft delete) pegawai non-aktif
+  - permission: movements.read
+    description: Lihat riwayat pergerakan pegawai (promosi/mutasi/separation)
+  - permission: movements.write
+    description: Buat dokumen pergerakan (promotion/transfer/status_change/separation)
+  - permission: onboard.execute
+    description: Jalankan wizard onboarding pegawai (buat akun SSO + profil + role)
+  - permission: access-requests.view
+    description: Lihat & ajukan permintaan akses (Fase B approval by position)
+  - permission: dictionaries.write
+    description: Kelola kamus kepegawaian & struktur organisasi (dynamic master data)
+  - permission: departments.read
+    description: Lihat departemen (unit kerja)
+  - permission: departments.write
+    description: Kelola departemen
+  - permission: departments.delete
+    description: Hapus departemen
+  - permission: designations.read
+    description: Lihat jabatan (designation)
+  - permission: designations.write
+    description: Kelola jabatan
+  - permission: designations.delete
+    description: Hapus jabatan
+  - permission: employment_types.read
+    description: Lihat jenis kepegawaian
+  - permission: employment_types.write
+    description: Kelola jenis kepegawaian
+  - permission: grades.read
+    description: Lihat golongan/grade
+  - permission: grades.write
+    description: Kelola golongan/grade
+  - permission: branches.read
+    description: Lihat unit/fakultas (branch)
+  - permission: branches.write
+    description: Kelola unit/fakultas
+
+# Role default service ini — di-upsert self-sync (union, tidak menghapus role/permission
+# yang dibuat admin manual). Calon staging bootstrap: tanpa ini portal gak ada role utk di-assign.
+roles:
+  - name: HC Admin
+    description: Akses penuh modul Human Capital (CRUD + onboard + kamus + approval)
+    permissions:
+      - employees.read
+      - employees.write
+      - employees.delete
+      - movements.read
+      - movements.write
+      - onboard.execute
+      - access-requests.view
+      - dictionaries.write
+      - departments.read
+      - departments.write
+      - departments.delete
+      - designations.read
+      - designations.write
+      - designations.delete
+      - employment_types.read
+      - employment_types.write
+      - grades.read
+      - grades.write
+      - branches.read
+      - branches.write
+  - name: HR Staff
+    description: Operasional harian HC — tulis data & onboard, tanpa hapus
+    permissions:
+      - employees.read
+      - employees.write
+      - movements.read
+      - movements.write
+      - onboard.execute
+      - access-requests.view
+      - departments.read
+      - designations.read
+      - employment_types.read
+      - grades.read
+      - branches.read
+  - name: HC Viewer
+    description: Baca-saja seluruh data HC + ajukan akses
+    permissions:
+      - employees.read
+      - movements.read
+      - access-requests.view
+      - departments.read
+      - designations.read
+      - employment_types.read
+      - grades.read
+      - branches.read
+
+menu:
+  - label: "Human Capital"
+    path: /dashboard/human-capital
+    icon: Users
+    sort_order: 10
+    children:
+      - label: Employees
+        path: /dashboard/human-capital/employees
+        icon: IdCard
+        required_permission: employees.read
+        sort_order: 1
+      - label: Onboard
+        path: /dashboard/human-capital/onboard
+        icon: UserPlus
+        required_permission: onboard.execute
+        sort_order: 2
+      - label: Movements
+        path: /dashboard/human-capital/movements
+        icon: ArrowLeftRight
+        required_permission: movements.read
+        sort_order: 3
+      - label: Departments
+        path: /dashboard/human-capital/departments
+        icon: Building2
+        required_permission: departments.read
+        sort_order: 4
+      - label: Designations
+        path: /dashboard/human-capital/designations
+        icon: Briefcase
+        required_permission: designations.read
+        sort_order: 5
+      - label: Employment Types
+        path: /dashboard/human-capital/employment-types
+        icon: BadgeCheck
+        required_permission: employment_types.read
+        sort_order: 6
+      - label: Grades
+        path: /dashboard/human-capital/grades
+        icon: Layers
+        required_permission: grades.read
+        sort_order: 7
+      - label: Branches
+        path: /dashboard/human-capital/branches
+        icon: GitBranch
+        required_permission: branches.read
+        sort_order: 8
+      - label: Permintaan Akses
+        path: /dashboard/access-requests
+        icon: ShieldCheck
+        required_permission: access-requests.view
+        sort_order: 9
+      - label: Pengaturan Organisasi
+        path: /dashboard/human-capital/org-settings
+        icon: Settings
+        required_permission: dictionaries.write
+        sort_order: 10

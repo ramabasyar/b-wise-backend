@@ -1,0 +1,53 @@
+# ================= B-Wise (Go monorepo: permission-service, human-capital, iku, inventory, cli, steps) =================
+# Environment & secrets — tiap service punya .env sendiri
+.env
+.env.*
+!.env.example
+
+# Keys
+keys/
+*.pem
+*.key
+
+# Build & runtime
+bin/
+*.exe
+*.log
+tmp/
+
+# Catatan internal lokal (dokumentasi publik = API_DOCUMENTATION.md & ARCHITECTURE.md, tetap di-track)
+STATE.md
+
+# OS
+.DS_Store
+
+# === Catatan agent (Em) — selalu local, jangan pernah ke-push ===
+# Konvensi file catatan saat develop: STATE.md, plans/, *.local.md, catatan*, phase-*-state.md
+STATE.md
+STATE*.md
+plans/
+*.local.md
+catatan*
+Catatan*
+phase-*-state.md
+*-scratch.md
+
+# === Python (solver scheduling) ===
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# === Go build artifacts (binary lepas — PATH EKSPLISIT, jangan generalize: cmd/server itu source!) ===
+human-capital/server
+human-capital/main
+permission-service/main
+iku/main
+scheduling/main
+inventory/main
+*.test
+
+# === Internal-only (PRINSIP Mas Rama: GitHub = code doang; ini catatan/tool lokal) ===
+cli/
+steps/
+deploy/

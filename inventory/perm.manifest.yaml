@@ -1,0 +1,31 @@
+# perm.manifest.yaml — sumber kebenaran permissions & menu service ini.
+# Self-sync otomatis ke Permission Service setiap kali service boot (idempotent).
+# Edit file ini saat menambah fitur — review bareng code, deploy = terdaftar.
+service:
+  name: inventory
+  description: "inventory service"
+  base_url: ""        # opsional: diisi dari env jika perlu
+  sync_enabled: true  # false = jangan auto-sync (admin kelola manual via API)
+
+permissions:
+  - permission: inventory.read
+    description: Lihat data inventory
+  - permission: inventory.write
+    description: Tambah/ubah data inventory
+  - permission: inventory.delete
+    description: Hapus data inventory
+
+menu:
+  - label: "inventory"
+    path: /dashboard/inventory
+    icon: Boxes
+    sort_order: 10
+    children:
+      - label: Daftar Data
+        path: /dashboard/inventory/items
+        icon: List
+        required_permission: inventory.read
+      - label: Stok Opname
+        path: /dashboard/inventory/opname
+        icon: ClipboardList
+        required_permission: inventory.delete

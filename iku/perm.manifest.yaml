@@ -1,0 +1,118 @@
+# perm.manifest.yaml — sumber kebenaran permissions & menu service IKU (Performance Center).
+# Self-sync otomatis ke Permission Service setiap boot (idempotent).
+# Scope bertambah seiring fase ROADMAP.md (F1: targets/formula, F2: achievements/evidence, dst).
+service:
+  name: iku
+  description: "B-Wise Performance Center — manajemen IKU (benchmark eCakradipa, blueprint v2)"
+  base_url: ""
+  sync_enabled: true
+
+permissions:
+  # Regulatory Compliance Engine (registry) — F0
+  - permission: regulations.read
+    description: Lihat daftar versi regulasi IKU
+  - permission: regulations.write
+    description: Mendaftarkan regulasi baru (admin BPM)
+  # Indicator Engine — F0 (read) / F1 (write saat formula dikelola)
+  - permission: indicators.read
+    description: Lihat master indikator (IKU/IKT/KPI)
+  - permission: indicators.write
+    description: Kelola definisi & formula indikator
+  # Periode — F0
+  - permission: periods.write
+    description: Kelola periode pengukuran (buka/tutup, deadline)
+  # Indicator Engine — F1
+  - permission: formulas.read
+    description: Lihat versi formula indikator
+  - permission: formulas.write
+    description: Kelola & uji formula (sandbox, aktivasi versi)
+  - permission: targets.read
+    description: Lihat target & dokumen PK
+  - permission: targets.write
+    description: Menetapkan/menyetujui target (PK)
+  # Capaian & Governance — F2 (MVP)
+  - permission: achievements.read
+    description: Lihat capaian & evidence
+  - permission: achievements.write
+    description: Input capaian (manual/import) & upload evidence
+  - permission: achievements.workflow
+    description: Aksi workflow capaian (submit/review/approve/publish/reject)
+  # Dashboard — F3
+  - permission: dashboard.read
+    description: Lihat dashboard capaian (role-aware di UI)
+  # Action Plan — F4
+  - permission: actionplans.read
+    description: Lihat action plan & saran perbaikan
+  - permission: actionplans.write
+    description: Kelola action plan (buat, update progres, eskalasi)
+  # Exports & Notifications — F7
+  - permission: exports.read
+    description: Export laporan (Excel/PDF)
+  - permission: notifications.read
+    description: Lihat notifikasi in-app & status pengiriman
+  # Data Broker — F5
+  - permission: connectors.read
+    description: Lihat registry connector & kontrak data
+  - permission: connectors.write
+    description: Kelola connector (kontrak data)
+  - permission: imports.execute
+    description: Import data Excel/CSV (preview & apply capaian)
+  # Compliance Engine — F6
+  - permission: compliance.read
+    description: Lihat monitor kepatuhan IKU, perubahan regulasi & impact report
+  - permission: compliance.write
+    description: Kelola perubahan regulasi (workflow, approval, aktivasi)
+
+menu:
+  - label: "IKU"
+    path: /dashboard/iku
+    icon: Target
+    sort_order: 20
+    children:
+      - label: Indikator
+        path: /dashboard/iku/indicators
+        icon: Gauge
+        required_permission: indicators.read
+        sort_order: 1
+      - label: Targets
+        path: /dashboard/iku/targets
+        icon: Crosshair
+        required_permission: targets.read
+        sort_order: 2
+      - label: Capaian
+        path: /dashboard/iku/achievements
+        icon: BarChart3
+        required_permission: achievements.read
+        sort_order: 3
+      - label: Action Plans
+        path: /dashboard/iku/action-plans
+        icon: ClipboardList
+        required_permission: actionplans.read
+        sort_order: 4
+      - label: Data Import
+        path: /dashboard/iku/imports
+        icon: FileSpreadsheet
+        required_permission: connectors.read
+        sort_order: 5
+      - label: Compliance
+        path: /dashboard/iku/compliance
+        icon: ShieldCheck
+        required_permission: compliance.read
+        sort_order: 6
+      - label: Notifikasi
+        path: /dashboard/iku/notifications
+        icon: Bell
+        required_permission: notifications.read
+        sort_order: 7
+      - label: Periode
+        path: /dashboard/iku/periods
+        icon: CalendarClock
+        required_permission: indicators.read
+        sort_order: 8
+      - label: Dashboard
+        path: /dashboard/iku/dashboard
+        icon: LayoutDashboard
+        required_permission: dashboard.read
+        sort_order: 0
+      # Menu bertambah per fase (Capaian F2, Dashboard F3, Action Plans F4)
+      # agar sidebar tidak menautkan halaman yang belum dibangun.
