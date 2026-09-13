@@ -289,15 +289,15 @@ func (r *RoleRepository) Delete(id string) error {
 // AddPermission adds a permission to a role
 func (r *RoleRepository) AddPermission(roleID, permissionID string) error {
 	return r.db.Table("role_permissions").Create(map[string]interface{}{
-		"role_id":       roleID,
-		"permission_id": permissionID,
+		"role_id":               roleID,
+		"service_permission_id": permissionID,
 	}).Error
 }
 
 // RemovePermission removes a permission from a role
 func (r *RoleRepository) RemovePermission(roleID, permissionID string) error {
 	return r.db.Table("role_permissions").
-		Where("role_id = ? AND permission_id = ?", roleID, permissionID).
+		Where("role_id = ? AND service_permission_id = ?", roleID, permissionID).
 		Delete(nil).Error
 }
 
