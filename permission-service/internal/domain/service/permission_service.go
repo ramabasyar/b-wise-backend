@@ -1030,7 +1030,12 @@ func (s *PermissionService) SyncManifest(m *ManifestInput) (map[string]int, erro
 	// 4. Struktur menu berubah → flush cache menu SEMUA user
 	s.flushMenuCache()
 
-	s.recordAudit(m.Service.Name, "self_sync", "", svc.ID, "service", svc.ID, fmt.Sprintf(`{"summary":%v}`, summary))
+	// Detail audit masuk kolom jsonb — %v merender map sbg Go syntax (invalid JSON).
+	summaryJSON, err := json.Marshal(summary)
+	if err != nil {
+		summaryJSON = []byte("{}")
+	}
+	s.recordAudit(m.Service.Name, "self_sync", "", svc.ID, "service", svc.ID, fmt.Sprintf(`{"summary":%s}`, summaryJSON))
 	return summary, nil
 }
 
