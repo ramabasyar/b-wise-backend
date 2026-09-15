@@ -1,0 +1,80 @@
+# perm.manifest.yaml — sumber kebenaran permissions & menu permission-service.
+# Self-sync otomatis ke Permission Service (diri sendiri) setiap boot — idempotent.
+service:
+  name: permission-service
+  description: "B-Wise Permission Service (RBAC, service registry, menu, audit trail)"
+  base_url: "http://127.0.0.1:8082"
+  sync_enabled: true
+
+permissions:
+  - permission: services.read
+    description: Lihat daftar service terdaftar
+  - permission: services.write
+    description: Kelola registrasi service
+  - permission: roles.read
+    description: Lihat role per service
+  - permission: roles.write
+    description: Kelola role & link permission
+  - permission: users.read
+    description: Lihat akses & permission user (grant, menu)
+  - permission: users.write
+    description: Kelola grant akses & permission user
+  - permission: permissions.read
+    description: Lihat katalog permission
+  - permission: permissions.write
+    description: Kelola katalog permission
+  - permission: menu.read
+    description: Lihat menu items
+  - permission: menu.write
+    description: Kelola menu items
+  - permission: audit.read
+    description: Lihat audit trail grant/revoke/self-sync
+
+# Role default — upsert self-sync (union, tidak menghapus buatan admin).
+roles:
+  - name: Perm Admin
+    description: Akses penuh administrasi Permission Service (services, roles, users, menu, audit)
+    permissions:
+      - services.read
+      - services.write
+      - roles.read
+      - roles.write
+      - users.read
+      - users.write
+      - permissions.read
+      - permissions.write
+      - menu.read
+      - menu.write
+      - audit.read
+
+menu:
+  - label: "Permission Service"
+    path: /dashboard/permission-service
+    icon: Shield
+    sort_order: 20
+    children:
+      - label: Services
+        path: /dashboard/permission-service/services
+        icon: Server
+        required_permission: services.read
+        sort_order: 1
+      - label: Roles
+        path: /dashboard/permission-service/roles
+        icon: ShieldCheck
+        required_permission: roles.read
+        sort_order: 2
+      - label: User Access
+        path: /dashboard/permission-service/users
+        icon: Users
+        required_permission: users.read
+        sort_order: 3
+      - label: Audit Logs
+        path: /dashboard/permission-service/audit-logs
+        icon: ScrollText
+        required_permission: users.read
+        sort_order: 4
+      - label: Menu Management
+        path: /dashboard/permission-service/menu-management
+        icon: ListTree
+        required_permission: services.read
+        sort_order: 5

@@ -19,6 +19,7 @@ import (
 	"github.com/rama/b-wise/permission-service/internal/adapter/persistence/postgres"
 	"github.com/rama/b-wise/permission-service/internal/domain/entity"
 	domainsvc "github.com/rama/b-wise/permission-service/internal/domain/service"
+	"github.com/rama/b-wise/permission-service/internal/service/permissionsync"
 	"gorm.io/gorm"
 )
 
@@ -31,6 +32,20 @@ func main() {
 
 	// Set Gin mode
 	gin.SetMode(gin.ReleaseMode)
+
+	// Self-register ke Permission Service = diri sendiri (best-effort, background + retry).
+	// Membaca perm.manifest.yaml — sumber kebenaran permissions & menu service ini,
+	// termasuk menu admin permission-service sendiri (services/roles/users/audit/menu).
+	if m, err := permissionsync.LoadManifest("perm.manifest.yaml"); err != nil {
+		log.Printf("[perm-sync] manifest: %v (self-sync dilewati)", err)
+	} else {
+		syncer := permissionsync.New(cfg.SSO, m, log.Printf)
+		if syncer.Enabled() {
+			syncer.RunInBackground(nil)
+		} else {
+			log.Printf("[perm-sync] dinonaktifkan (manifest sync_enabled=false atau config SSO belum lengkap)")
+		}
+	}
 
 	log.Println("Starting permission service...")
 
@@ -66,9 +81,9 @@ func main() {
 				&entity.UserPermission{},
 				&entity.Role{},
 				&entity.UserRole{},
-			&entity.MenuItem{},
-			&entity.AuditLog{},
-			&entity.AccessRequest{},
+				&entity.MenuItem{},
+				&entity.AuditLog{},
+				&entity.AccessRequest{},
 			); err != nil {
 				zapLogger.Warn(fmt.Sprintf("[startup] migration failed: %v", err))
 			} else {
@@ -77,23 +92,23 @@ func main() {
 
 			// Initialize repositories
 			// Initialize cache (Redis) - optional, dipakai oleh PermissionService
-	var redisCache *cache.Cache
-	if cfg.Redis.Host != "" {
-		redisCache, err = cache.New(cache.Config{
-			Host:     cfg.Redis.Host,
-			Port:     cfg.Redis.Port,
-			Password: cfg.Redis.Password,
-			DB:       cfg.Redis.DB,
-		})
-		if err != nil {
-			zapLogger.Info(fmt.Sprintf("[startup] cache skipped: %v", err))
-		} else {
-			defer redisCache.Close()
-			zapLogger.Info("[startup] cache connected")
-		}
-	}
+			var redisCache *cache.Cache
+			if cfg.Redis.Host != "" {
+				redisCache, err = cache.New(cache.Config{
+					Host:     cfg.Redis.Host,
+					Port:     cfg.Redis.Port,
+					Password: cfg.Redis.Password,
+					DB:       cfg.Redis.DB,
+				})
+				if err != nil {
+					zapLogger.Info(fmt.Sprintf("[startup] cache skipped: %v", err))
+				} else {
+					defer redisCache.Close()
+					zapLogger.Info("[startup] cache connected")
+				}
+			}
 
-		serviceRepo := postgres.NewServiceRepository(db)
+			serviceRepo := postgres.NewServiceRepository(db)
 			permRepo := postgres.NewServicePermissionRepository(db)
 			accessRepo := postgres.NewServiceAccessRepository(db)
 			userPermRepo := postgres.NewUserPermissionRepository(db)
@@ -112,7 +127,6 @@ func main() {
 			zapLogger.Info("[startup] repositories and services initialized")
 		}
 	}
-
 
 	// Setup router
 	zapGlobal := zapLogger.SugaredLogger.Desugar()
