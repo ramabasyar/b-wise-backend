@@ -49,67 +49,67 @@ menu:
         path: /dashboard/scheduling/rooms
         icon: Building2
         required_permission: facilities.read
-        sort_order: 1
+        sort_order: 2
       - label: Tipe Ruang
         path: /dashboard/scheduling/room-types
         icon: Shapes
         required_permission: facilities.read
-        sort_order: 2
+        sort_order: 3
       - label: Fasilitas Ruang
         path: /dashboard/scheduling/facility-types
         icon: Wrench
         required_permission: facilities.read
-        sort_order: 3
+        sort_order: 4
       - label: Mata Kuliah
         path: /dashboard/scheduling/courses
         icon: BookOpen
         required_permission: academics.read
-        sort_order: 4
+        sort_order: 5
       - label: Tipe Mata Kuliah
         path: /dashboard/scheduling/course-types
         icon: Tags
         required_permission: academics.read
-        sort_order: 5
+        sort_order: 6
       - label: Dosen
         path: /dashboard/scheduling/lecturers
         icon: GraduationCap
         required_permission: academics.read
-        sort_order: 6
+        sort_order: 7
       - label: Rombel
         path: /dashboard/scheduling/class-groups
         icon: Users
         required_permission: academics.read
-        sort_order: 7
+        sort_order: 8
       - label: Penawaran MK
         path: /dashboard/scheduling/offerings
         icon: ClipboardList
         required_permission: academics.read
-        sort_order: 8
+        sort_order: 9
       - label: Ketersediaan Dosen
         path: /dashboard/scheduling/availability
         icon: UserCheck
         required_permission: academics.read
-        sort_order: 9
+        sort_order: 10
       - label: Slot Waktu
         path: /dashboard/scheduling/time-slots
         icon: Clock
         required_permission: timeslots.read
-        sort_order: 10
+        sort_order: 11
       - label: Semester
         path: /dashboard/scheduling/terms
         icon: CalendarRange
         required_permission: academics.read
-        sort_order: 11
+        sort_order: 12
       - label: Penjadwalan
         path: /dashboard/scheduling/solve
         icon: CalendarClock
         required_permission: solve.read
-        sort_order: 0
+        sort_order: 1
       - label: Jadwal Aktif
         path: /dashboard/scheduling/active
         icon: CalendarCheck
         required_permission: schedules.read
-        sort_order: 12
+        sort_order: 0
       - label: Jadwal Saya
         path: /dashboard/scheduling/my-schedule
         icon: CalendarDays
