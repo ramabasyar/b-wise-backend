@@ -247,15 +247,18 @@ def solve_stream(req: SolveRequest):
                 x_by_session[i].append((j, k, v))
                 x_by_day[(i, sl.day)].append(v)
 
-    # H1 — tepat satu penempatan per sesi
+    # H1 — tepat satu penempatan per sesi (fail-soft: sesi tanpa ruang cukup besar
+    # tidak menggagalkan solve — dilaporkan sebagai unassigned utk tindak lanjut admin)
+    unplaced: list[int] = []
     for i, s in enumerate(sessions):
         opts = [v for _, _, v in x_by_session.get(i, [])]
         if not opts:
-            yield emit({"phase": "failed", "progress": 100,
-                        "message": f"Sesi {s.course_code} ({s.key}) tidak menemukan ruang/slot yang cocok — cek kapasitas & tipe ruang",
-                        "stats": {"assigned": 0, "unassigned": 1}})
-            return
+            unplaced.append(i)
+            continue
         m.AddExactlyOne(opts)
+    if unplaced:
+        det = ", ".join(f"{sessions[i].course_code}@{sessions[i].group_id}({sessions[i].group_size} mhs)" for i in unplaced[:5])
+        tlog(f"H1 fail-soft: {len(unplaced)} sesi tanpa ruang cukup: {det}")
 
     # ---------- H7: hari terblokir dosen (semua anggota multi-dosen) ----------
     blocked_days: dict[str, set[int]] = defaultdict(set)
@@ -669,7 +672,7 @@ def solve_stream(req: SolveRequest):
             tlog("CP-SAT gagal → hasil GREEDY+LS dikembalikan (feasible by construction)")
             yield emit({
                 "phase": "done", "progress": 100, "elapsed": elapsed,
-                "message": f"Selesai (greedy+optimasi): {len(final_place)}/{len(sessions)} sesi terjadwal dalam {elapsed}s — {ls_moves} perbaikan sebaran diterapkan.",
+                "message": f"Selesai (greedy+optimasi): {len(final_place)}/{len(sessions)} sesi terjadwal dalam {elapsed}s — {ls_moves} perbaikan sebaran diterapkan." + (f" [{len(unplaced)} sesi tanpa ruang cukup besar]" if unplaced else ""),
                 "stats": {"assigned": len(final_place), "unassigned": len(sessions) - len(final_place),
                           "soft_score": -1, "status": "GREEDY+LS"},
                 "assignments": assignments,
@@ -697,7 +700,7 @@ def solve_stream(req: SolveRequest):
             soft = 0
     yield emit({
         "phase": "done", "progress": 100, "elapsed": elapsed,
-        "message": f"Selesai: {assigned}/{len(sessions)} sesi terjadwal dalam {elapsed}s (skor soft: {soft}).",
+        "message": f"Selesai: {assigned}/{len(sessions)} sesi terjadwal dalam {elapsed}s (skor soft: {soft})." + (f" [{len(unplaced)} sesi tanpa ruang cukup besar]" if unplaced else ""),
         "stats": {
             "assigned": assigned, "unassigned": len(sessions) - assigned,
             "soft_score": soft, "status": solver.StatusName(status),
