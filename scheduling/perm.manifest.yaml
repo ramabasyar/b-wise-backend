@@ -105,6 +105,11 @@ menu:
         icon: CalendarClock
         required_permission: solve.read
         sort_order: 0
+      - label: Jadwal Aktif
+        path: /dashboard/scheduling/active
+        icon: CalendarCheck
+        required_permission: schedules.read
+        sort_order: 12
       - label: Jadwal Saya
         path: /dashboard/scheduling/my-schedule
         icon: CalendarDays

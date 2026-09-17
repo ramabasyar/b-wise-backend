@@ -146,6 +146,43 @@ func (s *SolveService) buildModel(termID string) (*solverclient.SolverPayload, e
 		return "theory"
 	}
 
+	// F-multi-dosen: muat relasi pengampu per offering (offering_lecturers).
+	offIDs := make([]string, 0, len(offerings))
+	for _, o := range offerings {
+		offIDs = append(offIDs, o.ID)
+	}
+	var offLects []entity.OfferingLecturer
+	if len(offIDs) > 0 {
+		s.db.Where("offering_id IN ?", offIDs).Order("sort_order ASC").Find(&offLects)
+	}
+	lectsByOff := map[string][]entity.OfferingLecturer{}
+	for _, ol := range offLects {
+		lectsByOff[ol.OfferingID] = append(lectsByOff[ol.OfferingID], ol)
+	}
+	// constraintLects — dosen yang HARUS bebas slot untuk offering ini:
+	//   parallel       → SEMUA dosen (team teaching hadir bersama di sesi sama);
+	//   single/split_* → dosen utama saja (paruh dosen split tidak selalu mengajar,
+	//                    info sesi belum granular — dosen utama mewakili).
+	constraintLects := func(o entity.Offering) []string {
+		rels := lectsByOff[o.ID]
+		for _, r := range rels {
+			if r.Pattern == "parallel" {
+				ids := make([]string, 0, len(rels))
+				for _, r2 := range rels {
+					ids = append(ids, r2.LecturerID)
+				}
+				return ids
+			}
+		}
+		if o.LecturerID != "" {
+			return []string{o.LecturerID}
+		}
+		if len(rels) > 0 {
+			return []string{rels[0].LecturerID}
+		}
+		return nil
+	}
+
 	p := &solverclient.SolverPayload{Rooms: make([]solverclient.SolverRoom, 0, len(rooms)),
 		RoomTypes:       make([]solverclient.SolverRoomType, 0, len(roomTypes)),
 		Slots:          make([]solverclient.SolverSlot, 0, len(slots)),
@@ -184,9 +221,18 @@ func (s *SolveService) buildModel(termID string) (*solverclient.SolverPayload, e
 		if o.RoomType == "" && resolveNeed(ctype) == "none" {
 			continue
 		}
+		// F-multi-dosen: offering tanpa sesi terjadwalkan sama sekali (semua SKS lapangan/simulasi) — skip
+		if o.SessionSks <= 0 && o.PracticeSks <= 0 {
+			continue
+		}
+		cLects := constraintLects(o)
 		sessions := o.SessionsPerWeek
 		if sessions <= 0 {
 			sessions = 1
+		}
+		// practice-only (semua SKS praktikum, tanpa sesi teori) — hanya sesi praktikum
+		if o.SessionSks <= 0 && o.PracticeSks > 0 {
+			sessions = 0
 		}
 		sksSesi := o.SessionSks
 		if sksSesi <= 0 {
@@ -211,7 +257,7 @@ func (s *SolveService) buildModel(termID string) (*solverclient.SolverPayload, e
 				p.Sessions = append(p.Sessions, solverclient.SolverSession{
 					Key: fmt.Sprintf("%s#%d", o.ID, n), OfferingID: o.ID,
 					CourseCode: ccode, CourseType: ctype, RoomNeed: cneed, RoomType: o.RoomType,
-					GroupID: o.ClassGroupID, GroupSize: size, LecturerID: lect,
+					GroupID: o.ClassGroupID, GroupSize: size, LecturerID: lect, LecturerIDs: cLects,
 					DurationSlots: dur, DurationMinutes: theoryMin,
 				})
 		}
@@ -233,7 +279,7 @@ func (s *SolveService) buildModel(termID string) (*solverclient.SolverPayload, e
 			p.Sessions = append(p.Sessions, solverclient.SolverSession{
 				Key: fmt.Sprintf("%s#p", o.ID), OfferingID: o.ID,
 				CourseCode: ccode, CourseType: "practice", RoomNeed: "practice", RoomType: "",
-				GroupID: o.ClassGroupID, GroupSize: size, LecturerID: lect,
+				GroupID: o.ClassGroupID, GroupSize: size, LecturerID: lect, LecturerIDs: cLects,
 				DurationSlots: (o.PracticeSks + 1) / 2, DurationMinutes: practiceMin,
 			})
 		}
@@ -268,6 +314,7 @@ func (s *SolveService) run(ctx context.Context, jobID string) {
 	}
 
 	first := true
+	terminal := false // true bila solver mengirim event done/failed (F-perf guard)
 	err = s.solver.StreamSolve(ctx, *p, func(ev solverclient.SolverEvent) error {
 		if first {
 			s.patch(jobID, map[string]any{"status": "solving"})
@@ -303,9 +350,11 @@ func (s *SolveService) run(ctx context.Context, jobID string) {
 			}
 			_ = kept
 			s.patch(jobID, map[string]any{"status": "done", "stats": ev.Stats, "elapsed": ev.Elapsed, "finished_at": now})
+			terminal = true
 		}
 		if ev.Phase == "failed" {
 			s.patch(jobID, map[string]any{"status": "failed", "stats": ev.Stats, "finished_at": time.Now()})
+			terminal = true
 		}
 		// cek cancel
 		select {
@@ -317,6 +366,10 @@ func (s *SolveService) run(ctx context.Context, jobID string) {
 	})
 	if err != nil && ctx.Err() == nil {
 		s.patch(jobID, map[string]any{"status": "failed", "message": fmt.Sprintf("Solver gagal: %v", err), "finished_at": time.Now()})
+	} else if err == nil && !terminal && ctx.Err() == nil {
+		// EOF tanpa event done/failed — solver crash diam-diam; jangan biarkan job menggantung
+		s.patch(jobID, map[string]any{"status": "failed", "progress": 100, "phase": "failed",
+			"message": "Stream solver berakhir tanpa hasil (sidecar error) — cek log solver", "finished_at": time.Now()})
 	}
 }
 

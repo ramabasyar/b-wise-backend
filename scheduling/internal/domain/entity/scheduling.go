@@ -171,6 +171,7 @@ type Lecturer struct {
 	ID         string    `json:"id" gorm:"primaryKey;type:varchar(36);default:gen_random_uuid()"`
 	Code       string    `json:"code" gorm:"type:varchar(50);uniqueIndex;not null"` // NIDN/NIK
 	Name       string    `json:"name" gorm:"type:varchar(150);not null"`
+	Nidn       string    `json:"nidn,omitempty" gorm:"type:varchar(30)"` // NIDN resmi (dari siakad pegawai)
 	Email      string    `json:"email,omitempty" gorm:"type:varchar(150)"`
 	Phone      string    `json:"phone,omitempty" gorm:"type:varchar(30)"`
 	Rank       string    `json:"rank,omitempty" gorm:"type:varchar(50)"` // Lektor/Kepala/…
@@ -247,6 +248,7 @@ type Offering struct {
 	SessionSks      int       `json:"session_sks" gorm:"default:2"`                // SKS per sesi (2 SKS = 1 sesi 100m)
 	PracticeSks     int       `json:"practice_sks" gorm:"default:0"`                // SKS praktikum/minggu (sesi blok terpisah, ruang for_practice)
 	RoomType        string    `json:"room_type,omitempty" gorm:"type:varchar(30)"` // pin tipe ruang (menang atas room_need)
+	SiakadKelasID  string    `json:"siakad_kelas_id,omitempty" gorm:"type:varchar(30);uniqueIndex"` // data-id kelas siakad (traceability sync)
 	Notes           string    `json:"notes,omitempty" gorm:"type:text"`
 	IsActive        bool      `json:"is_active" gorm:"default:true"`
 	Source          string    `json:"source" gorm:"type:varchar(20);default:'manual'"`
@@ -260,3 +262,28 @@ type Offering struct {
 }
 
 func (Offering) TableName() string { return "offerings" }
+
+// OfferingLecturer — pengampu offering (multi-dosen, hasil verifikasi admin siakad 45% kelas).
+// Pattern:
+//   single        — 1 dosen sepanjang semester (tabel ini opsional utk kasus ini)
+//   parallel      — team teaching sejajar: >=2 dosen hadir di sesi sama (solver: SEMUA dosen harus bebas slot)
+//   split_period  — split pertemuan (mis. dosen A sesi 1-8, dosen B 9-16) — solver cukup dosen utama bebas
+//   split_session — varian split lain (mis. 1-6/7-11/12-16)
+// PorsiSks = porsi SKS per dosen dari siakad (mis. 1.5).
+type OfferingLecturer struct {
+	ID           string    `json:"id" gorm:"primaryKey;type:varchar(36);default:gen_random_uuid()"`
+	OfferingID   string    `json:"offering_id" gorm:"type:varchar(36);uniqueIndex:uq_offering_lecturer,priority:1;not null"`
+	LecturerID   string    `json:"lecturer_id" gorm:"type:varchar(36);uniqueIndex:uq_offering_lecturer,priority:2;not null"`
+	Role         string    `json:"role" gorm:"type:varchar(20);default:'primary'"`     // primary|co|assistant
+	PorsiSks     float64   `json:"porsi_sks" gorm:"default:0"`                         // porsi SKS (siakad)
+	Pattern      string    `json:"pattern" gorm:"type:varchar(30);default:'single'"`  // single|parallel|split_period|split_session
+	PeriodDetail string    `json:"period_detail,omitempty" gorm:"type:varchar(100)"`  // "Sebelum UTS (1-8)" dst
+	SortOrder    int       `json:"sort_order" gorm:"default:0"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+
+	Offering *Offering `json:"offering,omitempty" gorm:"foreignKey:OfferingID"`
+	Lecturer *Lecturer `json:"lecturer,omitempty" gorm:"foreignKey:LecturerID"`
+}
+
+func (OfferingLecturer) TableName() string { return "offering_lecturers" }
