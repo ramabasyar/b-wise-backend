@@ -11,6 +11,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	entity "github.com/rama/b-wise/scheduling/internal/domain/entity"
@@ -125,8 +128,10 @@ func (s *SolveService) buildModel(termID string) (*solverclient.SolverPayload, e
 	if len(rooms) == 0 || len(slots) == 0 {
 		return nil, ErrNoData
 	}
-	var blocks []entity.LecturerAvailability
-	s.db.Where("mode = ?", "blocked").Find(&blocks)
+	// Ketersediaan dosen v2: semua mode di-load — logika agregasi di bawah
+	// (whitelist available / blokir penuh / window jam → slot-level).
+	var avails []entity.LecturerAvailability
+	s.db.Find(&avails)
 
 	// kamus jenis MK → kebutuhan ruang (theory|practice|any|none)
 	var courseTypes []entity.CourseType
@@ -186,7 +191,7 @@ func (s *SolveService) buildModel(termID string) (*solverclient.SolverPayload, e
 	p := &solverclient.SolverPayload{Rooms: make([]solverclient.SolverRoom, 0, len(rooms)),
 		RoomTypes:       make([]solverclient.SolverRoomType, 0, len(roomTypes)),
 		Slots:          make([]solverclient.SolverSlot, 0, len(slots)),
-		LecturerBlocks: make([]solverclient.SolverBlock, 0, len(blocks))}
+		LecturerBlocks: make([]solverclient.SolverBlock, 0, len(avails))}
 	for _, rt := range roomTypes {
 		p.RoomTypes = append(p.RoomTypes, solverclient.SolverRoomType{Code: rt.Code, ForTheory: rt.ForTheory, ForPractice: rt.ForPractice})
 	}
@@ -204,8 +209,84 @@ func (s *SolveService) buildModel(termID string) (*solverclient.SolverPayload, e
 	for _, sl := range slots {
 		p.Slots = append(p.Slots, solverclient.SolverSlot{ID: sl.ID, Day: sl.Day, Order: sl.Order, StartTime: sl.StartTime, EndTime: sl.EndTime})
 	}
-	for _, b := range blocks {
-		p.LecturerBlocks = append(p.LecturerBlocks, solverclient.SolverBlock{LecturerID: b.LecturerID, Day: b.Day})
+	// ---------- agregasi ketersediaan v2 ----------
+	// 1) mode=available TANPA jam → whitelist hari: hari lain diblokir penuh
+	//    (dosen magang "hanya bisa Rabu & Kamis" — tanpa input banyak blocker)
+	// 2) mode=blocked TANPA jam → blokir hari penuh
+	// 3) DENGAN jam: blocked → blokir slot yang menimpa window;
+	//    available → blokir slot DI LUAR window hari itu (hanya window yang boleh)
+	activeDays := map[int]bool{}
+	for _, sl := range slots {
+		activeDays[sl.Day] = true
+	}
+	whitelist := map[string]map[int]bool{}
+	for _, a := range avails {
+		if a.Mode == "available" && a.StartTime == "" && a.EndTime == "" {
+			if whitelist[a.LecturerID] == nil {
+				whitelist[a.LecturerID] = map[int]bool{}
+			}
+			whitelist[a.LecturerID][a.Day] = true
+		}
+	}
+	blockedFull := map[string]map[int]bool{}
+	blockedSlots := map[string]map[string]bool{}
+	for _, a := range avails {
+		if a.StartTime == "" && a.EndTime == "" {
+			if a.Mode == "blocked" {
+				if blockedFull[a.LecturerID] == nil {
+					blockedFull[a.LecturerID] = map[int]bool{}
+				}
+				blockedFull[a.LecturerID][a.Day] = true
+			}
+			continue
+		}
+		if blockedSlots[a.LecturerID] == nil {
+			blockedSlots[a.LecturerID] = map[string]bool{}
+		}
+		for _, sl := range slots {
+			if sl.Day != a.Day {
+				continue
+			}
+			overlap := sl.StartTime < a.EndTime && a.StartTime < sl.EndTime
+			if (a.Mode == "blocked" && overlap) || (a.Mode == "available" && !overlap) {
+				blockedSlots[a.LecturerID][sl.ID] = true
+			}
+		}
+	}
+	for lid, days := range whitelist {
+		if blockedFull[lid] == nil {
+			blockedFull[lid] = map[int]bool{}
+		}
+		for d := range activeDays {
+			if !days[d] {
+				blockedFull[lid][d] = true
+			}
+		}
+	}
+	for lid, days := range blockedFull {
+		for d := range days {
+			p.LecturerBlocks = append(p.LecturerBlocks, solverclient.SolverBlock{LecturerID: lid, Day: d})
+		}
+	}
+	slotDay := map[string]int{}
+	for _, sl := range slots {
+		slotDay[sl.ID] = sl.Day
+	}
+	agg := map[string]map[int][]string{}
+	for lid, sids := range blockedSlots {
+		for sid := range sids {
+			d := slotDay[sid]
+			if agg[lid] == nil {
+				agg[lid] = map[int][]string{}
+			}
+			agg[lid][d] = append(agg[lid][d], sid)
+		}
+	}
+	for lid, byDay := range agg {
+		for d, ids := range byDay {
+			sort.Strings(ids)
+			p.LecturerBlocks = append(p.LecturerBlocks, solverclient.SolverBlock{LecturerID: lid, Day: d, SlotIDs: ids})
+		}
 	}
 	// kebijakan durasi SKS (default Permendikbud 50/170)
 	var tp entity.TimePolicy
@@ -640,4 +721,639 @@ func intOf(v any) int {
 		return n
 	}
 	return 0
+}
+
+
+// ==================== Penyesuaian Jadwal — Lapis 1 (Move) ====================
+
+var dayNames = []string{"", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"}
+
+func hm2min(t string) int {
+	p := strings.Split(t, ":")
+	if len(p) != 2 {
+		return -1
+	}
+	h, _ := strconv.Atoi(p[0])
+	m, _ := strconv.Atoi(p[1])
+	return h*60 + m
+}
+
+func min2hm(m int) string {
+	return fmt.Sprintf("%02d:%02d", m/60, m%60)
+}
+
+// MoveEntry — geser 1 sesi draft ke slot/ruang baru dengan validasi keras.
+// Durasi sesi dipertahankan; hasil move otomatis dikunci (locked) supaya
+// re-solve berikutnya menghormati keputusan manual.
+func (s *SolveService) MoveEntry(entryID, slotID, roomID string) (*entity.TimetableEntry, error) {
+	var entry entity.TimetableEntry
+	if err := s.db.First(&entry, "id = ?", entryID).Error; err != nil {
+		return nil, errors.New("entri jadwal tidak ditemukan")
+	}
+	if entry.VersionID != nil {
+		return nil, errors.New("entri milik versi terpublikasi — tidak dapat dipindah langsung")
+	}
+	var slot entity.TimeSlot
+	if err := s.db.First(&slot, "id = ?", slotID).Error; err != nil {
+		return nil, errors.New("slot waktu tidak ditemukan")
+	}
+	var room entity.Room
+	if err := s.db.First(&room, "id = ?", roomID).Error; err != nil {
+		return nil, errors.New("ruang tidak ditemukan")
+	}
+	ns, ne, err := s.validateMove(&entry, slot, room)
+	if err != nil {
+		return nil, err
+	}
+	day := slot.Day
+
+	entry.SlotID = slot.ID
+	entry.Day = day
+	entry.SlotOrder = slot.Order
+	entry.StartTime = min2hm(ns)
+	entry.EndTime = min2hm(ne)
+	entry.RoomID = room.ID
+	entry.Locked = true
+	if err := s.db.Save(&entry).Error; err != nil {
+		return nil, err
+	}
+	return &entry, nil
+}
+
+func (s *SolveService) moveCheckRoomType(offeringID string, room entity.Room) error {
+	var off entity.Offering
+	if err := s.db.First(&off, "id = ?", offeringID).Error; err != nil {
+		return nil // offering tak ketemu — jangan blokir move
+	}
+	need := off.RoomType
+	if need == "" {
+		var course entity.Course
+		if err := s.db.First(&course, "id = ?", off.CourseID).Error; err == nil && course.Type != "" {
+			var ct entity.CourseType
+			if err := s.db.First(&ct, "code = ?", course.Type).Error; err == nil && ct.RoomNeed != "" {
+				need = ct.RoomNeed
+			}
+		}
+	}
+	if need == "" || need == "any" || need == "none" {
+		return nil
+	}
+	var rt entity.RoomType
+	if err := s.db.First(&rt, "code = ?", room.Type).Error; err != nil {
+		return nil
+	}
+	if need == "theory" && !rt.ForTheory {
+		return errors.New("tipe ruang tidak cocok: sesi teori butuh ruang kelas teori")
+	}
+	if need == "practice" && !rt.ForPractice {
+		return errors.New("tipe ruang tidak cocok: sesi praktikum butuh ruang praktik")
+	}
+	return nil
+}
+
+func (s *SolveService) moveCheckLecturerDay(lids []string, day int) error {
+	if len(lids) == 0 || day < 1 || day > 6 {
+		return nil
+	}
+	var avails []entity.LecturerAvailability
+	s.db.Where("lecturer_id IN ?", lids).Find(&avails)
+	allowed := map[string]map[int]bool{}
+	hasAllowed := map[string]bool{}
+	for _, a := range avails {
+		if a.Mode == "available" && a.StartTime == "" && a.EndTime == "" {
+			if allowed[a.LecturerID] == nil {
+				allowed[a.LecturerID] = map[int]bool{}
+				hasAllowed[a.LecturerID] = true
+			}
+			allowed[a.LecturerID][a.Day] = true
+		}
+	}
+	for _, a := range avails {
+		if a.Day != day {
+			continue
+		}
+		if a.Mode == "blocked" && a.StartTime == "" && a.EndTime == "" {
+			return fmt.Errorf("dosen diblokir di hari %s (ketersediaan dosen)", dayNames[day])
+		}
+		if hasAllowed[a.LecturerID] && !allowed[a.LecturerID][day] {
+			return fmt.Errorf("dosen hanya bisa mengajar di hari tertentu — %s tidak termasuk (ketersediaan dosen)", dayNames[day])
+		}
+	}
+	return nil
+}
+
+
+// validateMove — seluruh validasi pemindahan sesi (dipakai MoveEntry manual
+// maupun engine penyesuaian otomatis Lapis 2). Return jam mulai/selesai baru.
+func (s *SolveService) validateMove(entry *entity.TimetableEntry, slot entity.TimeSlot, room entity.Room) (int, int, error) {
+	sd, ed := hm2min(entry.StartTime), hm2min(entry.EndTime)
+	if sd < 0 || ed <= sd {
+		return 0, 0, errors.New("waktu entri lama tidak valid")
+	}
+	ns := hm2min(slot.StartTime)
+	ne := ns + (ed - sd)
+	if ne > 21*60 {
+		return 0, 0, fmt.Errorf("durasi sesi melewati batas hari (berakhir %s)", min2hm(ne))
+	}
+	day := slot.Day
+
+	var clash []entity.TimetableEntry
+	q := "version_id IS NULL AND day = ? AND start_time < ? AND end_time > ? AND id <> ?"
+	s.db.Where(q+" AND room_id = ?", day, min2hm(ne), min2hm(ns), entry.ID, room.ID).Find(&clash)
+	if len(clash) > 0 {
+		return 0, 0, fmt.Errorf("bentrokan ruang: %s sudah memakai ruang ini (%s–%s)",
+			clash[0].CourseCode, clash[0].StartTime, clash[0].EndTime)
+	}
+	if entry.GroupID != "" {
+		s.db.Where(q+" AND group_id = ?", day, min2hm(ne), min2hm(ns), entry.ID, entry.GroupID).Find(&clash)
+		if len(clash) > 0 {
+			return 0, 0, fmt.Errorf("bentrokan rombel: sudah ada sesi %s pada jam %s–%s",
+				clash[0].CourseCode, clash[0].StartTime, clash[0].EndTime)
+		}
+	}
+	var lids []string
+	s.db.Model(&entity.OfferingLecturer{}).Where("offering_id = ?", entry.OfferingID).Pluck("lecturer_id", &lids)
+	if len(lids) == 0 && entry.LecturerID != "" {
+		lids = []string{entry.LecturerID}
+	}
+	if len(lids) > 0 {
+		var otherOffs []string
+		s.db.Model(&entity.OfferingLecturer{}).
+			Where("lecturer_id IN ? AND offering_id <> ?", lids, entry.OfferingID).
+			Distinct("offering_id").Pluck("offering_id", &otherOffs)
+		if len(otherOffs) > 0 {
+			s.db.Where(q+" AND offering_id IN ?", day, min2hm(ne), min2hm(ns), entry.ID, otherOffs).Find(&clash)
+			if len(clash) > 0 {
+				return 0, 0, fmt.Errorf("bentrokan dosen: pengampu sudah mengajar %s (%s–%s)",
+					clash[0].CourseCode, clash[0].StartTime, clash[0].EndTime)
+			}
+		}
+	}
+	if entry.GroupID != "" && room.Capacity > 0 {
+		var grp entity.ClassGroup
+		if err := s.db.First(&grp, "id = ?", entry.GroupID).Error; err == nil && grp.SizeEst > room.Capacity {
+			return 0, 0, fmt.Errorf("kapasitas tidak cukup: rombel ~%d mhs > ruang %d kursi", grp.SizeEst, room.Capacity)
+		}
+	}
+	if err := s.moveCheckRoomType(entry.OfferingID, room); err != nil {
+		return 0, 0, err
+	}
+	if err := s.moveCheckLecturerDay(lids, day); err != nil {
+		return 0, 0, err
+	}
+	return ns, ne, nil
+}
+
+// ==================== Penyesuaian Jadwal — Lapis 2 (Proposal Otomatis) ====================
+
+// AdjChange — satu baris diff perubahan.
+type AdjChange struct {
+	EntryID    string `json:"entry_id"`
+	CourseCode string `json:"course_code"`
+	GroupCode  string `json:"group_code"`
+	FromDay    int    `json:"from_day"`
+	FromJam    string `json:"from_jam"`
+	FromRoom   string `json:"from_room"`
+	ToDay      int    `json:"to_day"`
+	ToJam      string `json:"to_jam"`
+	ToRoom     string `json:"to_room"`
+	ToSlotID   string `json:"to_slot_id"`
+	ToRoomID   string `json:"to_room_id"`
+}
+
+// AdjUnresolved — sesi terdampak yang tidak mendapat pengganti valid.
+type AdjUnresolved struct {
+	EntryID    string `json:"entry_id"`
+	CourseCode string `json:"course_code"`
+	Reason     string `json:"reason"`
+}
+
+func absI(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+// date10 — normalisasi string tanggal: kolom DATE terbaca GORM dgn komponen waktu.
+func date10(s string) string {
+	if len(s) > 10 {
+		return s[:10]
+	}
+	return s
+}
+
+// ProposeAdjustment — deteksi sesi terdampak dari ketersediaan ruang (rentang tanggal
+// → hari kuliah, jam overlap) lalu susun usulan pemindahan per sesi dengan validasi
+// penuh. Semua sesi lain dianggap tetap. Proposal disimpan PENDING menunggu keputusan.
+func (s *SolveService) ProposeAdjustment(roomAvailID, actorID string) (*entity.AdjustmentProposal, error) {
+	var av entity.RoomAvailability
+	if err := s.db.First(&av, "id = ?", roomAvailID).Error; err != nil {
+		return nil, errors.New("ketersediaan ruang tidak ditemukan")
+	}
+	if !av.IsActive {
+		return nil, errors.New("ketersediaan ruang tidak aktif")
+	}
+	// kolom date terbaca balik dgn komponen waktu (mis. "2026-09-21T00:00:00Z") — normalisasi
+	normDate := func(s string) (time.Time, error) {
+		if len(s) > 10 {
+			s = s[:10]
+		}
+		return time.Parse("2006-01-02", s)
+	}
+	d1, e1 := normDate(av.StartDate)
+	d2, e2 := normDate(av.EndDate)
+	if e1 != nil || e2 != nil || d2.Before(d1) {
+		return nil, errors.New("rentang tanggal tidak valid")
+	}
+	daySet := map[int]bool{}
+	for d := d1; !d.After(d2); d = d.AddDate(0, 0, 1) {
+		wd := int(d.Weekday())
+		if wd == 0 {
+			wd = 7
+		}
+		if wd >= 1 && wd <= 6 {
+			daySet[wd] = true
+		}
+	}
+	dayList := []int{}
+	for d := 1; d <= 6; d++ {
+		if daySet[d] {
+			dayList = append(dayList, d)
+		}
+	}
+	if len(dayList) == 0 {
+		return nil, errors.New("rentang tanggal tidak menyentuh hari kuliah")
+	}
+	q := s.db.Where("version_id IS NULL AND room_id = ? AND day IN ?", av.RoomID, dayList)
+	if av.StartTime != "" && av.EndTime != "" {
+		q = q.Where("start_time < ? AND end_time > ?", av.EndTime, av.StartTime)
+	}
+	var hit []entity.TimetableEntry
+	q.Order("day, start_time").Find(&hit)
+	if len(hit) == 0 {
+		return nil, errors.New("tidak ada sesi terdampak untuk gangguan ini")
+	}
+	term := hit[0].TermID
+
+	var rooms []entity.Room
+	s.db.Where("is_active = ?", true).Order("capacity ASC").Find(&rooms)
+	var slots []entity.TimeSlot
+	s.db.Order("day, \"order\"").Find(&slots)
+	sizeOf, codeOfGroup, codeOfRoom := map[string]int{}, map[string]string{}, map[string]string{}
+	{
+		var grps []entity.ClassGroup
+		s.db.Find(&grps)
+		for _, g := range grps {
+			sizeOf[g.ID] = g.SizeEst
+			codeOfGroup[g.ID] = g.Code
+		}
+		for _, r := range rooms {
+			codeOfRoom[r.ID] = r.Code
+		}
+	}
+
+	changes := []AdjChange{}
+	unres := []AdjUnresolved{}
+	virtual := []entity.TimetableEntry{} // okupansi rencana supaya antar-usulan tidak saling menabrak
+	for _, e := range hit {
+		if e.Locked {
+			unres = append(unres, AdjUnresolved{EntryID: e.ID, CourseCode: e.CourseCode, Reason: "terkunci manual — tidak digeser otomatis"})
+			continue
+		}
+		sortedSlots := make([]entity.TimeSlot, len(slots))
+		copy(sortedSlots, slots)
+		es := e
+		sort.SliceStable(sortedSlots, func(a, b int) bool {
+			sa, sb := sortedSlots[a], sortedSlots[b]
+			da, db := absI(sa.Day-es.Day), absI(sb.Day-es.Day)
+			if da != db {
+				return da < db
+			}
+			return absI(sa.Order-es.SlotOrder) < absI(sb.Order-es.SlotOrder)
+		})
+		sortedRooms := make([]entity.Room, len(rooms))
+		copy(sortedRooms, rooms)
+		sz := sizeOf[e.GroupID]
+		fit := func(c int) int {
+			if c > 0 && c < sz {
+				return 1 << 30
+			}
+			return absI(c - sz)
+		}
+		sort.SliceStable(sortedRooms, func(a, b int) bool {
+			return fit(sortedRooms[a].Capacity) < fit(sortedRooms[b].Capacity)
+		})
+		dur := hm2min(e.EndTime) - hm2min(e.StartTime)
+		found := false
+		for _, sl := range sortedSlots {
+			for _, r := range sortedRooms {
+				if r.ID == av.RoomID {
+					continue
+				}
+				ns, _, verr := s.validateMove(&es, sl, r)
+				if verr != nil {
+					continue
+				}
+				ne := ns + dur
+				bump := false
+				for _, v := range virtual {
+					if v.Day == sl.Day && v.RoomID == r.ID && hm2min(v.StartTime) < ne && ns < hm2min(v.EndTime) {
+						bump = true
+						break
+					}
+				}
+				if bump {
+					continue
+				}
+				changes = append(changes, AdjChange{
+					EntryID: e.ID, CourseCode: e.CourseCode, GroupCode: codeOfGroup[e.GroupID],
+					FromDay: e.Day, FromJam: e.StartTime + "–" + e.EndTime, FromRoom: codeOfRoom[av.RoomID],
+					ToDay: sl.Day, ToJam: min2hm(ns) + "–" + min2hm(ne), ToRoom: r.Code,
+					ToSlotID: sl.ID, ToRoomID: r.ID,
+				})
+				nv := e
+				nv.Day, nv.SlotID, nv.RoomID = sl.Day, sl.ID, r.ID
+				nv.StartTime, nv.EndTime = min2hm(ns), min2hm(ne)
+				virtual = append(virtual, nv)
+				found = true
+				break
+			}
+			if found {
+				break
+			}
+		}
+		if !found {
+			unres = append(unres, AdjUnresolved{EntryID: e.ID, CourseCode: e.CourseCode, Reason: "tidak menemukan slot/ruang pengganti yang valid"})
+		}
+	}
+	if len(changes) == 0 {
+		return nil, fmt.Errorf("tidak ada usulan pemindahan valid: %d sesi terdampak, %d tak teratasi", len(hit), len(unres))
+	}
+	chJ, _ := json.Marshal(changes)
+	unJ, _ := json.Marshal(unres)
+	p := &entity.AdjustmentProposal{
+		TermID: term, RoomAvailabilityID: av.ID,
+		Reason: fmt.Sprintf("Ruang %s: %s", codeOfRoom[av.RoomID], av.Reason),
+		Status: "pending", Changes: string(chJ), Unresolved: string(unJ), CreatedBy: actorID,
+	}
+	if err := s.db.Create(p).Error; err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+// ListAdjustments — daftar proposal (default pending).
+func (s *SolveService) ListAdjustments(status string) ([]entity.AdjustmentProposal, error) {
+	var items []entity.AdjustmentProposal
+	if err := s.db.Where("status = ?", status).Order("created_at DESC").Limit(50).Find(&items).Error; err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+// DecideAdjustment — setujui (terapkan diff: entri pindah + terkunci) atau tolak.
+func (s *SolveService) DecideAdjustment(id string, approve bool, actorID string) (*entity.AdjustmentProposal, error) {
+	var p entity.AdjustmentProposal
+	if err := s.db.First(&p, "id = ?", id).Error; err != nil {
+		return nil, errors.New("proposal tidak ditemukan")
+	}
+	if p.Status != "pending" {
+		return nil, errors.New("proposal sudah diputuskan")
+	}
+	if approve {
+		var changes []AdjChange
+		if err := json.Unmarshal([]byte(p.Changes), &changes); err != nil {
+			return nil, err
+		}
+		var slots []entity.TimeSlot
+		s.db.Find(&slots)
+		slotByID := map[string]entity.TimeSlot{}
+		for _, sl := range slots {
+			slotByID[sl.ID] = sl
+		}
+		// Pintar: gangguan SATU TANGGAL → exception per tanggal (pola mingguan TIDAK
+		// berubah — minggu berikutnya kembali normal). Rentang → move permanen pola.
+		var av entity.RoomAvailability
+		hasAv := s.db.First(&av, "id = ?", p.RoomAvailabilityID).Error == nil
+		singleDate := hasAv && date10(av.StartDate) == date10(av.EndDate)
+		for _, ch := range changes {
+			var e entity.TimetableEntry
+			if err := s.db.First(&e, "id = ?", ch.EntryID).Error; err != nil {
+				continue
+			}
+			if singleDate {
+				s.db.Where("date = ? AND entry_id = ?", date10(av.StartDate), ch.EntryID).
+					Delete(&entity.EntryOverride{})
+				ov := entity.EntryOverride{
+					TermID: p.TermID, Date: date10(av.StartDate), EntryID: ch.EntryID,
+					Kind: "moved", SlotID: ch.ToSlotID, RoomID: ch.ToRoomID,
+					Source: "adjustment:" + p.ID, Reason: p.Reason,
+				}
+				s.db.Create(&ov)
+				continue
+			}
+			sl, ok := slotByID[ch.ToSlotID]
+			if !ok {
+				continue
+			}
+			ns := hm2min(sl.StartTime)
+			dur := hm2min(e.EndTime) - hm2min(e.StartTime)
+			e.SlotID, e.Day, e.SlotOrder = sl.ID, sl.Day, sl.Order
+			e.StartTime, e.EndTime = min2hm(ns), min2hm(ns+dur)
+			e.RoomID, e.Locked = ch.ToRoomID, true
+			s.db.Save(&e)
+		}
+		p.Status = "applied"
+	} else {
+		p.Status = "rejected"
+	}
+	p.DecidedBy = actorID
+	s.db.Save(&p)
+	return &p, nil
+}
+
+
+// ==================== Penyesuaian Jadwal — Fase 3: Exception per Tanggal ====================
+
+// DaySession — satu baris jadwal efektif pada sebuah tanggal.
+type DaySession struct {
+	EntryID    string `json:"entry_id"`
+	CourseCode string `json:"course_code"`
+	CourseName string `json:"course_name"`
+	GroupCode  string `json:"group_code"`
+	Lecturer   string `json:"lecturer"`
+	Jam        string `json:"jam"`
+	RoomCode   string `json:"room_code"`
+	Status     string `json:"status"` // normal|moved|cancelled
+	MovedFrom  string `json:"moved_from,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+}
+
+// DayView — jadwal efektif sebuah tanggal kalender: pola mingguan (published ?? draft)
+// + entry_overrides diterapkan + calendar_events sebagai banner.
+func (s *SolveService) DayView(date, termID string) (map[string]any, error) {
+	d, err := time.Parse("2006-01-02", date10(date))
+	if err != nil {
+		return nil, errors.New("format tanggal harus YYYY-MM-DD")
+	}
+	wd := int(d.Weekday())
+	res := map[string]any{"date": date10(date), "weekday": wd, "sessions": []DaySession{}}
+	if wd == 0 {
+		res["note"] = "Hari Minggu — tidak ada perkuliahan"
+		return res, nil
+	}
+	var cals []entity.CalendarEvent
+	s.db.Where("date = ?", date10(date)).Find(&cals)
+	if len(cals) > 0 {
+		res["event"] = map[string]string{"name": cals[0].Name, "kind": cals[0].Kind}
+	}
+	// pilih term: parameter, atau term dgn entries terbanyak di hari itu
+	tid := termID
+	if tid == "" {
+		var row struct{ TermID string }
+		s.db.Raw("SELECT term_id FROM timetable_entries WHERE day = ? AND version_id IS NOT NULL GROUP BY term_id ORDER BY count(*) DESC LIMIT 1", wd).Scan(&row)
+		if row.TermID == "" {
+			s.db.Raw("SELECT term_id FROM timetable_entries WHERE day = ? GROUP BY term_id ORDER BY count(*) DESC LIMIT 1", wd).Scan(&row)
+		}
+		tid = row.TermID
+	}
+	if tid == "" {
+		res["note"] = "Belum ada jadwal untuk hari ini"
+		return res, nil
+	}
+	res["term_id"] = tid
+	// entries: published lebih diutamakan; fallback draft
+	var entries []entity.TimetableEntry
+	s.db.Preload("Room").Preload("ClassGroup").
+		Where("term_id = ? AND day = ? AND version_id IS NOT NULL", tid, wd).
+		Order("start_time").Find(&entries)
+	if len(entries) == 0 {
+		s.db.Preload("Room").Preload("ClassGroup").
+			Where("term_id = ? AND day = ? AND version_id IS NULL", tid, wd).
+			Order("start_time").Find(&entries)
+		res["source"] = "draft"
+	} else {
+		res["source"] = "published"
+	}
+	// overrides + jam override — resolve via session_key supaya berlaku lintas versi
+	// (engine L2 bekerja di draft; day-view menampilkan published ?? draft)
+	var ovs []entity.EntryOverride
+	s.db.Where("date = ? AND term_id = ?", date10(date), tid).Find(&ovs)
+	ovBy := map[string]entity.EntryOverride{}
+	for _, o := range ovs {
+		var src entity.TimetableEntry
+		if s.db.First(&src, "id = ?", o.EntryID).Error == nil && src.SessionKey != "" {
+			ovBy[src.SessionKey] = o
+		} else {
+			ovBy[o.EntryID] = o
+		}
+	}
+	var slots []entity.TimeSlot
+	s.db.Find(&slots)
+	slotByID := map[string]entity.TimeSlot{}
+	for _, sl := range slots {
+		slotByID[sl.ID] = sl
+	}
+	var rooms []entity.Room
+	s.db.Find(&rooms)
+	roomCode := map[string]string{}
+	for _, r := range rooms {
+		roomCode[r.ID] = r.Code
+	}
+	// nama MK + dosen pengampu utama
+	type offInfo struct{ course, lect string }
+	offMap := map[string]offInfo{}
+	{
+		var offs []entity.Offering
+		s.db.Preload("Course").Preload("Lecturer").Find(&offs)
+		for _, o := range offs {
+			cn, ln := "", ""
+			if o.Course != nil {
+				cn = o.Course.Name
+			}
+			if o.Lecturer != nil {
+				ln = o.Lecturer.Name
+			}
+			offMap[o.ID] = offInfo{cn, ln}
+		}
+	}
+	out := []DaySession{}
+	for _, e := range entries {
+		ds := DaySession{
+			EntryID: e.ID, CourseCode: e.CourseCode,
+			CourseName: offMap[e.OfferingID].course,
+			GroupCode:  "", Lecturer: offMap[e.OfferingID].lect,
+			Jam:        e.StartTime + "–" + e.EndTime,
+			RoomCode:   "", Status: "normal",
+		}
+		if e.Room != nil {
+			ds.RoomCode = e.Room.Code
+		}
+		if e.ClassGroup != nil {
+			ds.GroupCode = e.ClassGroup.Code
+		}
+		if ov, ok := ovBy[e.SessionKey]; ok {
+			// (juga cek by-ID utk override manual pada entri yg ditampilkan)
+			ds.Reason = ov.Reason
+			if ov.Kind == "cancelled" {
+				ds.Status = "cancelled"
+			} else if sl, ok2 := slotByID[ov.SlotID]; ok2 {
+				ns := hm2min(sl.StartTime)
+				dur := hm2min(e.EndTime) - hm2min(e.StartTime)
+				ds.Status = "moved"
+				ds.MovedFrom = fmt.Sprintf("asli %s @%s", ds.Jam, ds.RoomCode)
+				ds.Jam = min2hm(ns) + "–" + min2hm(ns+dur)
+				ds.RoomCode = roomCode[ov.RoomID]
+			}
+		}
+		out = append(out, ds)
+	}
+	res["sessions"] = out
+	return res, nil
+}
+
+// CreateOverride — pengecualian manual (moved/cancelled) untuk satu tanggal.
+func (s *SolveService) CreateOverride(termID, date, entryID, kind, slotID, roomID, reason string) (*entity.EntryOverride, error) {
+	if _, err := time.Parse("2006-01-02", date10(date)); err != nil {
+		return nil, errors.New("format tanggal harus YYYY-MM-DD")
+	}
+	var e entity.TimetableEntry
+	if err := s.db.First(&e, "id = ?", entryID).Error; err != nil {
+		return nil, errors.New("sesi tidak ditemukan")
+	}
+	if kind != "moved" && kind != "cancelled" {
+		return nil, errors.New("kind harus moved atau cancelled")
+	}
+	if kind == "moved" {
+		var sl entity.TimeSlot
+		if err := s.db.First(&sl, "id = ?", slotID).Error; err != nil {
+			return nil, errors.New("slot waktu tidak ditemukan")
+		}
+		var r entity.Room
+		if err := s.db.First(&r, "id = ?", roomID).Error; err != nil {
+			return nil, errors.New("ruang tidak ditemukan")
+		}
+	}
+	if termID == "" {
+		termID = e.TermID
+	}
+	// satu override per (tanggal, sesi) — replace
+	s.db.Where("date = ? AND entry_id = ?", date10(date), entryID).Delete(&entity.EntryOverride{})
+	ov := entity.EntryOverride{
+		TermID: termID, Date: date10(date), EntryID: entryID, Kind: kind,
+		SlotID: slotID, RoomID: roomID, Source: "manual", Reason: reason,
+	}
+	if err := s.db.Create(&ov).Error; err != nil {
+		return nil, err
+	}
+	return &ov, nil
+}
+
+// DeleteOverride — hapus pengecualian (kembali ke pola normal).
+func (s *SolveService) DeleteOverride(id string) error {
+	if err := s.db.Delete(&entity.EntryOverride{}, "id = ?", id).Error; err != nil {
+		return err
+	}
+	return nil
 }

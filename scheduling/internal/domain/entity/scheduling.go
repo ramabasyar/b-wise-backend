@@ -235,6 +235,72 @@ type LecturerAvailability struct {
 
 func (LecturerAvailability) TableName() string { return "lecturer_availabilities" }
 
+// RoomAvailability — ruang tidak tersedia pada tanggal/rentang kalender
+// (acara kampus, perbaikan, dsb.) — Penyesuaian Jadwal L1/L2.
+type RoomAvailability struct {
+	ID        string    `json:"id" gorm:"primaryKey;type:varchar(36);default:gen_random_uuid()"`
+	RoomID    string    `json:"room_id" gorm:"type:varchar(36);index;not null"`
+	StartDate string    `json:"start_date" gorm:"type:date;not null"` // YYYY-MM-DD (sama dgn end = sekali)
+	EndDate   string    `json:"end_date" gorm:"type:date;not null"`
+	StartTime string    `json:"start_time" gorm:"type:varchar(5)"` // opsional; kosong = seharian
+	EndTime   string    `json:"end_time" gorm:"type:varchar(5)"`
+	Reason    string    `json:"reason,omitempty" gorm:"type:varchar(200)"`
+	IsActive  bool      `json:"is_active" gorm:"default:true"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (RoomAvailability) TableName() string { return "room_availabilities" }
+
+// CalendarEvent — hari libur / acara kampus per tanggal (per semester).
+type CalendarEvent struct {
+	ID        string    `json:"id" gorm:"primaryKey;type:varchar(36);default:gen_random_uuid()"`
+	TermID    string    `json:"term_id" gorm:"type:varchar(36);index;not null"`
+	Date      string    `json:"date" gorm:"type:date;not null"`
+	Name      string    `json:"name" gorm:"type:varchar(150);not null"`
+	Kind      string    `json:"kind" gorm:"type:varchar(12);default:'holiday'"` // holiday|event
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (CalendarEvent) TableName() string { return "calendar_events" }
+
+// AdjustmentProposal — usulan penyesuaian jadwal dari gangguan (Penyesuaian Lapis 2).
+// changes/unresolved = JSON string (jsonb). Alur: propose → pending → approve/reject.
+type AdjustmentProposal struct {
+	ID                 string    `json:"id" gorm:"primaryKey;type:varchar(36);default:gen_random_uuid()"`
+	TermID             string    `json:"term_id" gorm:"type:varchar(36);index;not null"`
+	RoomAvailabilityID string    `json:"room_availability_id,omitempty" gorm:"type:varchar(36);index"`
+	Reason             string    `json:"reason" gorm:"type:varchar(200)"`
+	Status             string    `json:"status" gorm:"type:varchar(12);default:'pending';index"` // pending|applied|rejected
+	Changes            string    `json:"changes" gorm:"type:jsonb"`                             // diff per sesi
+	Unresolved         string    `json:"unresolved" gorm:"type:jsonb"`                          // sesi tak teratasi
+	CreatedBy          string    `json:"created_by" gorm:"type:varchar(36)"`
+	DecidedBy          string    `json:"decided_by,omitempty" gorm:"type:varchar(36)"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+}
+
+func (AdjustmentProposal) TableName() string { return "adjustment_proposals" }
+
+// EntryOverride — pengecualian per tanggal: sesi pola tampil berbeda HANYA pada
+// tanggal kalender tertentu (dipindah / dibatalkan). Pola mingguan tetap utuh.
+type EntryOverride struct {
+	ID        string    `json:"id" gorm:"primaryKey;type:varchar(36);default:gen_random_uuid()"`
+	TermID    string    `json:"term_id" gorm:"type:varchar(36);index;not null"`
+	Date      string    `json:"date" gorm:"type:date;index;not null"`
+	EntryID   string    `json:"entry_id" gorm:"type:varchar(36);index;not null"`
+	Kind      string    `json:"kind" gorm:"type:varchar(10);default:'moved'"` // moved|cancelled
+	SlotID    string    `json:"slot_id,omitempty" gorm:"type:varchar(36)"`
+	RoomID    string    `json:"room_id,omitempty" gorm:"type:varchar(36)"`
+	Source    string    `json:"source,omitempty" gorm:"type:varchar(50)"` // adjustment:<id> | manual
+	Reason    string    `json:"reason,omitempty" gorm:"type:varchar(200)"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (EntryOverride) TableName() string { return "entry_overrides" }
+
 // Offering — penawaran MK pada term (inti input solver F1):
 // MK × dosen pengampu × rombel × pola sesi.
 type Offering struct {

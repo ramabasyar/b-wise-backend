@@ -63,6 +63,7 @@ class Slot(BaseModel):
 class Block(BaseModel):
     lecturer_id: str
     day: int
+    slot_ids: list[str] = []
 
 class Session(BaseModel):
     """Satu sesi mingguan (offering bisa punya beberapa)."""
@@ -208,6 +209,17 @@ def solve_stream(req: SolveRequest):
     def constraint_ids(s: Session) -> list[str]:
         return s.lecturer_ids or ([s.lecturer_id] if s.lecturer_id else [])
 
+    # ---------- ketersediaan dosen: hari penuh & slot-level ----------
+    blocked_days: dict[str, set[int]] = defaultdict(set)
+    blocked_slots: dict[str, set[str]] = defaultdict(set)
+    for b in req.lecturer_blocks or []:
+        if b.slot_ids:
+            blocked_slots[b.lecturer_id].update(b.slot_ids)
+        else:
+            blocked_days[b.lecturer_id].add(b.day)
+    if blocked_days or blocked_slots:
+        tlog(f"ketersediaan v2 aktif: {len(blocked_days)} dosen hari-blok, {len(blocked_slots)} dosen slot-blok (window)")
+
     # ---------- var x[(i,j,k)] + filter H2/H3 ----------
     compat: dict[str, set[str]] | None = None
     if req.room_types:
@@ -239,7 +251,17 @@ def solve_stream(req: SolveRequest):
         elig_full_by_session[i] = elig_full
         elig_by_session[i] = elig
         for j, sl in enumerate(slots):
-            if session_block(i, j) is None:
+            blk = session_block(i, j)
+            if blk is None:
+                continue
+            # H7: hari terblokir dosen (full-day) — difilter di DOMAIN supaya greedy,
+            # local search, dan CP-SAT semuanya patuh (bukan cuma constraint CP-SAT).
+            if any(sl.day in blocked_days.get(lid, ()) for lid in constraint_ids(s)):
+                continue
+            # H7a: slot terblokir dosen (window jam) — blok sesi tak boleh menyentuh slot itu.
+            # Multi-dosen: salah satu anggota tim tersentuh → kandidat gugur.
+            if any(any(slots[jj].id in blocked_slots.get(lid, ()) for jj in blk)
+                   for lid in constraint_ids(s)):
                 continue
             for k in elig:
                 v = m.NewBoolVar(f"x{i}_{j}_{k}")
@@ -261,9 +283,7 @@ def solve_stream(req: SolveRequest):
         tlog(f"H1 fail-soft: {len(unplaced)} sesi tanpa ruang cukup: {det}")
 
     # ---------- H7: hari terblokir dosen (semua anggota multi-dosen) ----------
-    blocked_days: dict[str, set[int]] = defaultdict(set)
-    for b in req.lecturer_blocks:
-        blocked_days[b.lecturer_id].add(b.day)
+    # (blocked_days sudah diparse sebelum x-creation; slot-level difilter saat pembuatan kandidat)
     for i, s in enumerate(sessions):
         for lid in constraint_ids(s):
             bd = blocked_days.get(lid)
@@ -405,6 +425,12 @@ def solve_stream(req: SolveRequest):
             return False
         s0, e0 = abs_start(j), abs_end(blk)
         s = sessions[i]
+        # ketersediaan dosen: hari penuh & slot-level (window jam) — hard, multi-dosen aware
+        lids = constraint_ids(s)
+        if any(slots[j].day in blocked_days.get(lid, ()) for lid in lids):
+            return False
+        if any(any(slots[jj].id in blocked_slots.get(lid, ()) for jj in blk) for lid in lids):
+            return False
         if overlaps(room_busy[k], s0, e0) or overlaps(group_busy[s.group_id], s0, e0):
             return False
         for lid in constraint_ids(s):
@@ -444,9 +470,20 @@ def solve_stream(req: SolveRequest):
         return False
 
     def full_cands(i: int) -> list[tuple[int, int]]:
-        return sorted(((j, k) for j in range(len(slots)) if session_block(i, j)
-                       for k in elig_full_by_session.get(i, [])),
-                      key=lambda t: (slots[t[0]].day, slots[t[0]].order, t[1]))
+        lids = constraint_ids(sessions[i])
+        bd = [blocked_days.get(lid, ()) for lid in lids]
+        bs = [blocked_slots.get(lid, ()) for lid in lids]
+        out: list[tuple[int, int]] = []
+        for j in range(len(slots)):
+            blk = session_block(i, j)
+            if not blk:
+                continue
+            if any(slots[j].day in b for b in bd):
+                continue
+            if any(slots[jj].id in bset for bset in bs for jj in blk):
+                continue
+            out.extend((j, k) for k in elig_full_by_session.get(i, []))
+        return sorted(out, key=lambda t: (slots[t[0]].day, slots[t[0]].order, t[1]))
 
     # locked dulu (dipaksa model juga — konsisten)
     for lk in req.locked:

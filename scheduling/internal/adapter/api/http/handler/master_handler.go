@@ -26,6 +26,8 @@ type MasterHandler struct {
 	Slots     *service.CrudService[entity.TimeSlot]
 	Offerings *service.CrudService[entity.Offering]
 	Avails    *service.CrudService[entity.LecturerAvailability]
+	RoomAvails *service.CrudService[entity.RoomAvailability]
+	CalEvents  *service.CrudService[entity.CalendarEvent]
 }
 
 func errJSON(c *gin.Context, err error) {
@@ -197,6 +199,18 @@ func (h *MasterHandler) AvailCreate() gin.HandlerFunc { return createHandler(h.A
 func (h *MasterHandler) AvailUpdate() gin.HandlerFunc { return updateHandler(h.Avails) }
 func (h *MasterHandler) AvailDelete() gin.HandlerFunc { return deleteHandler(h.Avails) }
 
+func (h *MasterHandler) RoomAvailList() gin.HandlerFunc   { return listHandler(h.RoomAvails) }
+func (h *MasterHandler) RoomAvailGet() gin.HandlerFunc    { return getHandler(h.RoomAvails) }
+func (h *MasterHandler) RoomAvailCreate() gin.HandlerFunc { return createHandler(h.RoomAvails) }
+func (h *MasterHandler) RoomAvailUpdate() gin.HandlerFunc { return updateHandler(h.RoomAvails) }
+func (h *MasterHandler) RoomAvailDelete() gin.HandlerFunc { return deleteHandler(h.RoomAvails) }
+
+func (h *MasterHandler) CalEventList() gin.HandlerFunc   { return listHandler(h.CalEvents) }
+func (h *MasterHandler) CalEventGet() gin.HandlerFunc    { return getHandler(h.CalEvents) }
+func (h *MasterHandler) CalEventCreate() gin.HandlerFunc { return createHandler(h.CalEvents) }
+func (h *MasterHandler) CalEventUpdate() gin.HandlerFunc { return updateHandler(h.CalEvents) }
+func (h *MasterHandler) CalEventDelete() gin.HandlerFunc { return deleteHandler(h.CalEvents) }
+
 // NewMasterHandlerDB — wiring semua CrudService dari koneksi DB.
 func NewMasterHandlerDB(db *gorm.DB) *MasterHandler {
 	return &MasterHandler{
@@ -212,6 +226,8 @@ func NewMasterHandlerDB(db *gorm.DB) *MasterHandler {
 		Slots:     service.NewCrud[entity.TimeSlot](db),
 		Offerings: service.NewCrud[entity.Offering](db),
 		Avails:    service.NewCrud[entity.LecturerAvailability](db),
+		RoomAvails: service.NewCrud[entity.RoomAvailability](db),
+		CalEvents:  service.NewCrud[entity.CalendarEvent](db),
 	}
 }
 

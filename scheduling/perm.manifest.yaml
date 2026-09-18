@@ -45,61 +45,81 @@ menu:
     icon: CalendarDays
     sort_order: 30
     children:
+      - label: Penyesuaian Jadwal
+        path: /dashboard/scheduling/adjustments
+        icon: Shuffle
+        required_permission: schedules.read
+        sort_order: 2
+      - label: Jadwal Harian
+        path: /dashboard/scheduling/day-view
+        icon: CalendarDays
+        required_permission: schedules.read
+        sort_order: 3
       - label: Gedung & Ruang
         path: /dashboard/scheduling/rooms
         icon: Building2
         required_permission: facilities.read
-        sort_order: 2
+        sort_order: 4
       - label: Tipe Ruang
         path: /dashboard/scheduling/room-types
         icon: Shapes
         required_permission: facilities.read
-        sort_order: 3
+        sort_order: 5
       - label: Fasilitas Ruang
         path: /dashboard/scheduling/facility-types
         icon: Wrench
         required_permission: facilities.read
-        sort_order: 4
+        sort_order: 6
+      - label: Ketersediaan Ruang
+        path: /dashboard/scheduling/room-availabilities
+        icon: DoorClosed
+        required_permission: facilities.read
+        sort_order: 7
       - label: Mata Kuliah
         path: /dashboard/scheduling/courses
         icon: BookOpen
         required_permission: academics.read
-        sort_order: 5
+        sort_order: 8
       - label: Tipe Mata Kuliah
         path: /dashboard/scheduling/course-types
         icon: Tags
         required_permission: academics.read
-        sort_order: 6
+        sort_order: 9
       - label: Dosen
         path: /dashboard/scheduling/lecturers
         icon: GraduationCap
         required_permission: academics.read
-        sort_order: 7
+        sort_order: 10
       - label: Rombel
         path: /dashboard/scheduling/class-groups
         icon: Users
         required_permission: academics.read
-        sort_order: 8
+        sort_order: 11
       - label: Penawaran MK
         path: /dashboard/scheduling/offerings
         icon: ClipboardList
         required_permission: academics.read
-        sort_order: 9
+        sort_order: 12
       - label: Ketersediaan Dosen
         path: /dashboard/scheduling/availability
         icon: UserCheck
         required_permission: academics.read
-        sort_order: 10
+        sort_order: 13
       - label: Slot Waktu
         path: /dashboard/scheduling/time-slots
         icon: Clock
         required_permission: timeslots.read
-        sort_order: 11
+        sort_order: 14
+      - label: Kalender Akademik
+        path: /dashboard/scheduling/calendar-events
+        icon: CalendarX
+        required_permission: timeslots.read
+        sort_order: 15
       - label: Semester
         path: /dashboard/scheduling/terms
         icon: CalendarRange
         required_permission: academics.read
-        sort_order: 12
+        sort_order: 16
       - label: Penjadwalan
         path: /dashboard/scheduling/solve
         icon: CalendarClock
@@ -114,9 +134,9 @@ menu:
         path: /dashboard/scheduling/my-schedule
         icon: CalendarDays
         required_permission: schedules.read
-        sort_order: 13
+        sort_order: 17
       - label: Pengaturan Penjadwalan
         path: /dashboard/scheduling/weights
         icon: SlidersHorizontal
         required_permission: solve.execute
-        sort_order: 14
+        sort_order: 18

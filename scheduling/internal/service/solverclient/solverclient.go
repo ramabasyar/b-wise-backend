@@ -89,8 +89,9 @@ type SolverSlot struct {
 	EndTime   string `json:"end_time"`
 }
 type SolverBlock struct {
-	LecturerID string `json:"lecturer_id"`
-	Day        int    `json:"day"`
+	LecturerID string   `json:"lecturer_id"`
+	Day        int      `json:"day"`
+	SlotIDs    []string `json:"slot_ids,omitempty"` // kosong = blokir hari penuh; terisi = blokir slot spesifik
 }
 
 // StreamSolve — POST /solve, panggil onEvent per baris NDJSON.

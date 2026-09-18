@@ -73,7 +73,7 @@ func main() {
 			err = database.AutoMigrate(db,
 				&entity.Building{}, &entity.Room{}, &entity.RoomType{}, &entity.FacilityType{}, &entity.CourseType{}, &entity.Term{},
 				&entity.Course{}, &entity.Lecturer{}, &entity.ClassGroup{},
-				&entity.TimeSlot{}, &entity.LecturerAvailability{}, &entity.Offering{}, &entity.OfferingLecturer{},
+				&entity.TimeSlot{}, &entity.LecturerAvailability{}, &entity.RoomAvailability{}, &entity.CalendarEvent{}, &entity.AdjustmentProposal{}, &entity.EntryOverride{}, &entity.Offering{}, &entity.OfferingLecturer{},
 				&entity.SolveJob{}, &entity.TimetableEntry{}, &entity.TimetableVersion{}, &entity.CalendarToken{}, &entity.SolveConfig{}, &entity.TimePolicy{},
 			)
 			if err != nil {

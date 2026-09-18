@@ -15,6 +15,111 @@ type SolveHandler struct{ svc *service.SolveService }
 
 func NewSolveHandler(svc *service.SolveService) *SolveHandler { return &SolveHandler{svc: svc} }
 
+// DayView — jadwal efektif satu tanggal (pola + overrides + event).
+func (h *SolveHandler) DayView(c *gin.Context) {
+	data, err := h.svc.DayView(c.Query("date"), c.Query("term_id"))
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": data})
+}
+
+// CreateOverride — pengecualian manual per tanggal.
+func (h *SolveHandler) CreateOverride(c *gin.Context) {
+	var req struct {
+		TermID  string `json:"term_id"`
+		Date    string `json:"date" binding:"required"`
+		EntryID string `json:"entry_id" binding:"required"`
+		Kind    string `json:"kind" binding:"required,oneof=moved cancelled"`
+		SlotID  string `json:"slot_id"`
+		RoomID  string `json:"room_id"`
+		Reason  string `json:"reason"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errJSON(c, err)
+		return
+	}
+	ov, err := h.svc.CreateOverride(req.TermID, req.Date, req.EntryID, req.Kind, req.SlotID, req.RoomID, req.Reason)
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"success": true, "message": "Pengecualian dibuat", "data": ov})
+}
+
+// DeleteOverride — hapus pengecualian.
+func (h *SolveHandler) DeleteOverride(c *gin.Context) {
+	if err := h.svc.DeleteOverride(c.Param("id")); err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Pengecualian dihapus — kembali ke pola normal"})
+}
+
+// ProposeAdjustment — susun usulan penyesuaian dari ketersediaan ruang (Lapis 2).
+func (h *SolveHandler) ProposeAdjustment(c *gin.Context) {
+	var req struct {
+		RoomAvailabilityID string `json:"room_availability_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errJSON(c, err)
+		return
+	}
+	actor := c.GetString("user_id")
+	p, err := h.svc.ProposeAdjustment(req.RoomAvailabilityID, actor)
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"success": true, "message": "Proposal penyesuaian disusun", "data": p})
+}
+
+// ListAdjustments — daftar proposal penyesuaian.
+func (h *SolveHandler) ListAdjustments(c *gin.Context) {
+	items, err := h.svc.ListAdjustments(c.DefaultQuery("status", "pending"))
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": items})
+}
+
+// DecideAdjustment — setujui/tolak proposal.
+func (h *SolveHandler) DecideAdjustment(c *gin.Context) {
+	var req struct {
+		Approve bool `json:"approve"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	actor := c.GetString("user_id")
+	p, err := h.svc.DecideAdjustment(c.Param("id"), req.Approve, actor)
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Proposal diputuskan", "data": p})
+}
+
+// MoveEntry — geser 1 sesi draft ke slot/ruang baru (Penyesuaian Jadwal Lapis 1).
+// Validasi keras di service: bentrok ruang/rombel/dosen + kapasitas + tipe ruang + ketersediaan dosen.
+func (h *SolveHandler) MoveEntry(c *gin.Context) {
+	var req struct {
+		EntryID string `json:"entry_id" binding:"required"`
+		SlotID  string `json:"slot_id" binding:"required"`
+		RoomID  string `json:"room_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		errJSON(c, err)
+		return
+	}
+	entry, err := h.svc.MoveEntry(req.EntryID, req.SlotID, req.RoomID)
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Sesi dipindahkan", "data": entry})
+}
+
 type startSolveRequest struct {
 	TermID    string `json:"term_id" binding:"required"`
 	TimeLimit int    `json:"time_limit_seconds"`

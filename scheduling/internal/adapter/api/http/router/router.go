@@ -152,6 +152,12 @@ func SetupWithLogger(
 		mountCRUD(master, "lecturer-availabilities", permCheck,
 			h.Master.AvailList(), h.Master.AvailGet(), h.Master.AvailCreate(), h.Master.AvailUpdate(), h.Master.AvailDelete(),
 			"academics.read", "academics.write")
+		mountCRUD(master, "room-availabilities", permCheck,
+			h.Master.RoomAvailList(), h.Master.RoomAvailGet(), h.Master.RoomAvailCreate(), h.Master.RoomAvailUpdate(), h.Master.RoomAvailDelete(),
+			"facilities.read", "facilities.write")
+		mountCRUD(master, "calendar-events", permCheck,
+			h.Master.CalEventList(), h.Master.CalEventGet(), h.Master.CalEventCreate(), h.Master.CalEventUpdate(), h.Master.CalEventDelete(),
+			"timeslots.read", "timeslots.write")
 		master.POST("/time-slots/seed-default", permCheck.RequirePermission("timeslots.write"), h.Master.SeedTimeSlots)
 		mountCRUD(master, "offerings", permCheck,
 			h.Master.OfferingList(), h.Master.OfferingGet(), h.Master.OfferingCreate(), h.Master.OfferingUpdate(), h.Master.OfferingDelete(),
@@ -192,6 +198,13 @@ func SetupWithLogger(
 		tt.GET("/export.xlsx", permCheck.RequirePermission("schedules.read"), h.Solve.ExportXLSX)
 		tt.GET("/calendar.ics", permCheck.RequirePermission("consumers.read"), h.Solve.CalendarICS)
 		tt.GET("/view", permCheck.RequirePermission("schedules.read"), h.Solve.TimetableView)
+		tt.POST("/move", permCheck.RequirePermission("schedules.write"), h.Solve.MoveEntry)
+		tt.GET("/adjustments", permCheck.RequirePermission("schedules.read"), h.Solve.ListAdjustments)
+		tt.POST("/adjustments/propose", permCheck.RequirePermission("schedules.write"), h.Solve.ProposeAdjustment)
+		tt.POST("/adjustments/:id/decide", permCheck.RequirePermission("schedules.write"), h.Solve.DecideAdjustment)
+		tt.GET("/day-view", permCheck.RequirePermission("schedules.read"), h.Solve.DayView)
+		tt.POST("/overrides", permCheck.RequirePermission("schedules.write"), h.Solve.CreateOverride)
+		tt.DELETE("/overrides/:id", permCheck.RequirePermission("schedules.write"), h.Solve.DeleteOverride)
 
 		// ============ CALENDAR TOKENS (F4 gap — ICS tanpa header auth) ============
 		if h.Solve != nil {
