@@ -1,0 +1,24 @@
+# perm.manifest.yaml — sumber kebenaran permissions & menu service ini.
+# Self-sync otomatis ke Permission Service setiap kali service boot (idempotent).
+service:
+  name: web-management
+  description: "Binawan Web Management (BWM) — CMS headless untuk web Universitas Binawan: konten, media, dokumen, taksonomi, SEO"
+  base_url: ""
+  sync_enabled: true
+
+permissions:
+  # Konten (post/page/event/banner/slider)
+  - permission: contents.read
+    description: Lihat semua konten web (draft & published)
+  - permission: contents.write
+    description: Kelola konten web (buat/edit draft, publish, arsip)
+  # Media library (MinIO)
+  - permission: media.read
+    description: Lihat media library
+  - permission: media.write
+    description: Upload & kelola media
+  # Pengaturan & taksonomi (dipakai mulai F2)
+  - permission: settings.write
+    description: Kelola pengaturan web, taksonomi & redirect
+
+menu: []  # menu portal menyusul saat UI admin BWM dibangun (F1)
