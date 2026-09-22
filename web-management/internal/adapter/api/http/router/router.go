@@ -106,6 +106,20 @@ func SetupWithLogger(
 	// ===== BWM: API PUBLIK (read-only, tanpa auth; cache+ETag) =====
 	if h.Public != nil {
 		pub := r.Group("/api/v1/public")
+		// CORS terbuka utk data publik (web binawan lintas-origin) — hanya jika
+		// middleware CORS global belum set header (hindari duplikat).
+		pub.Use(func(c *gin.Context) {
+			if c.Request.Method == "OPTIONS" {
+				c.AbortWithStatus(204)
+				return
+			}
+			if c.Writer.Header().Get("Access-Control-Allow-Origin") == "" {
+				c.Header("Access-Control-Allow-Origin", "*")
+				c.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
+				c.Header("Access-Control-Allow-Headers", "Content-Type, If-None-Match")
+			}
+			c.Next()
+		})
 		pub.GET("/posts", h.Public.Posts)
 		pub.GET("/posts/:slug", h.Public.PostBySlug)
 		pub.GET("/banners", h.Public.Banners)
