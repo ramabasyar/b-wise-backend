@@ -263,6 +263,7 @@ func (b *Banner) BannerLive(now time.Time) bool {
 // Aset media (MinIO) — varian ukuran dibuat otomatis saat upload (F1 MinIO).
 
 type MediaVariant struct {
+	Key    string `json:"key,omitempty"` // object key MinIO (utk delete); URL utk konsumen
 	URL    string `json:"url"`
 	Width  int    `json:"width,omitempty"`
 	Height int    `json:"height,omitempty"`
@@ -288,6 +289,20 @@ func (MediaAsset) TableName() string { return "media_assets" }
 
 func (m *MediaAsset) VariantsMap() map[string]MediaVariant {
 	return TrOf[MediaVariant](m.Variants)
+}
+
+// MarshalJSON — variants dikirim sbg OBJEK (hasil parse jsonb), bukan string mentah —
+// konsumen API (web) tinggal pakai tanpa parse ganda.
+func (m MediaAsset) MarshalJSON() ([]byte, error) {
+	type Alias MediaAsset
+	v := map[string]MediaVariant{}
+	if m.Variants != "" {
+		_ = json.Unmarshal([]byte(m.Variants), &v)
+	}
+	return json.Marshal(struct {
+		Alias
+		Variants map[string]MediaVariant `json:"variants"`
+	}{Alias(m), v})
 }
 
 // ==================== Document ====================

@@ -45,3 +45,11 @@ cors:
     - "http://localhost:3002"
   allow_credentials: true
   max_age: 86400
+
+minio:
+  endpoint: "localhost:9000"
+  access_key: ""
+  secret_key: ""
+  bucket: "bwm-media"
+  use_ssl: false
+  public_base_url: ""

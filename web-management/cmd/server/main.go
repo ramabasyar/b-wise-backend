@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"context"
 	"fmt"
 	"log"
@@ -17,6 +18,7 @@ import (
 	"github.com/rama/b-wise/web-management/internal/adapter/config"
 	"github.com/rama/b-wise/web-management/internal/adapter/database"
 	"github.com/rama/b-wise/web-management/internal/adapter/logger"
+	"github.com/rama/b-wise/web-management/internal/adapter/storage"
 	"github.com/rama/b-wise/web-management/internal/domain/entity"
 	"github.com/rama/b-wise/web-management/internal/domain/service"
 	"github.com/rama/b-wise/web-management/internal/service/permissionsync"
@@ -101,15 +103,42 @@ func main() {
 
 	// ===== Initialize handlers =====
 	handlers := &router.Handlers{}
+
+	// MinIO (media library) — optional
+	var minioStore *storage.MinIO
+	if cfg.MinIO.Endpoint != "" && cfg.MinIO.AccessKey != "" {
+		minioStore, err = storage.New(storage.Config{
+			Endpoint: cfg.MinIO.Endpoint, AccessKey: cfg.MinIO.AccessKey, SecretKey: cfg.MinIO.SecretKey,
+			Bucket: cfg.MinIO.Bucket, UseSSL: cfg.MinIO.UseSSL, PublicBase: cfg.MinIO.PublicBase,
+		})
+		if err != nil {
+			zapLogger.Info(fmt.Sprintf("[startup] minio skipped: %v", err))
+			minioStore = nil
+		} else if err := minioStore.EnsureBucket(context.Background()); err != nil {
+			zapLogger.Info(fmt.Sprintf("[startup] minio ensure-bucket gagal: %v", err))
+		} else {
+			zapLogger.Info(fmt.Sprintf("[startup] minio OK (bucket %s)", cfg.MinIO.Bucket))
+		}
+	}
+
+	// Webhook publish — dari env WEBHOOK_URLS (csv)
+	var webhookURLs []string
+	for _, u := range strings.Split(os.Getenv("WEBHOOK_URLS"), ",") {
+		if u = strings.TrimSpace(u); u != "" {
+			webhookURLs = append(webhookURLs, u)
+		}
+	}
+
 	if db != nil {
 		var redisClient *redis.Client
 		if redisCache != nil {
 			redisClient = redisCache.Client()
 		}
-		contentSvc := service.NewContentService(db, redisClient)
+		contentSvc := service.NewContentService(db, redisClient).WithWebhooks(webhookURLs)
 		handlers = &router.Handlers{
 			Content: handler.NewContentHandler(contentSvc),
 			Public:  handler.NewPublicHandler(contentSvc, redisClient),
+			Media:   handler.NewMediaHandler(service.NewMediaService(db, minioStore)),
 		}
 		zapLogger.Info("[startup] BWM content service ready (admin + public API)")
 	}

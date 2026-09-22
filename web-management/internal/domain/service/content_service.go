@@ -19,12 +19,19 @@ import (
 // ContentService — logika konten BWM: CRUD, lifecycle (draft→published→archived),
 // kueri publik (hanya konten live), slug unik, dan invalidasi cache publik.
 type ContentService struct {
-	db    *gorm.DB
-	redis *redis.Client
+	db        *gorm.DB
+	redis     *redis.Client
+	webhooks  []string
 }
 
 func NewContentService(db *gorm.DB, r *redis.Client) *ContentService {
 	return &ContentService{db: db, redis: r}
+}
+
+// WithWebhooks — daftar URL yang dikabari saat publish/archive (chainable).
+func (s *ContentService) WithWebhooks(urls []string) *ContentService {
+	s.webhooks = urls
+	return s
 }
 
 var (
@@ -303,6 +310,7 @@ func (s *ContentService) PublishPost(id, actor string, at *time.Time) (*entity.P
 		return nil, err
 	}
 	s.FlushPublicCache()
+	FireWebhooks(s.webhooks, PublishEvent{Event: "publish", Entity: "post", ID: p.ID, Slug: p.Slug, At: time.Now()})
 	return p, nil
 }
 
@@ -317,6 +325,7 @@ func (s *ContentService) ArchivePost(id, actor string) (*entity.Post, error) {
 		return nil, err
 	}
 	s.FlushPublicCache()
+	FireWebhooks(s.webhooks, PublishEvent{Event: "archive", Entity: "post", ID: p.ID, Slug: p.Slug, At: time.Now()})
 	return p, nil
 }
 
@@ -442,6 +451,7 @@ func (s *ContentService) PublishEvent(id, actor string, at *time.Time) (*entity.
 		return nil, err
 	}
 	s.FlushPublicCache()
+	FireWebhooks(s.webhooks, PublishEvent{Event: "publish", Entity: "event", ID: e.ID, Slug: e.Slug, At: time.Now()})
 	return e, nil
 }
 
@@ -638,6 +648,7 @@ func (s *ContentService) PublishPage(id, actor string, at *time.Time) (*entity.P
 		return nil, err
 	}
 	s.FlushPublicCache()
+	FireWebhooks(s.webhooks, PublishEvent{Event: "publish", Entity: "page", ID: p.ID, Slug: p.Slug, At: time.Now()})
 	return p, nil
 }
 

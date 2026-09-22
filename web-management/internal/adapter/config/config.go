@@ -20,6 +20,7 @@ type Config struct {
 	SSO      SSOConfig
 	Logger   LoggerConfig
 	CORS     CORSConfig
+	MinIO    MinIOConfig
 }
 
 // ServerConfig holds server configuration
@@ -85,6 +86,16 @@ type CORSConfig struct {
 	AllowedOrigins   []string `mapstructure:"allowed_origins"`
 	AllowCredentials bool     `mapstructure:"allow_credentials"`
 	MaxAge           int      `mapstructure:"max_age"`
+}
+
+// MinIOConfig holds MinIO (media storage) configuration
+type MinIOConfig struct {
+	Endpoint   string `mapstructure:"endpoint"`
+	AccessKey  string `mapstructure:"access_key"`
+	SecretKey  string `mapstructure:"secret_key"`
+	Bucket     string `mapstructure:"bucket"`
+	UseSSL     bool   `mapstructure:"use_ssl"`
+	PublicBase string `mapstructure:"public_base_url"`
 }
 
 // Load loads configuration from file and environment variables
@@ -220,6 +231,14 @@ func bindEnvVars() {
 	viper.BindEnv("redis.port", "REDIS_PORT")
 	viper.BindEnv("redis.password", "REDIS_PASSWORD")
 	viper.BindEnv("redis.db", "REDIS_DB")
+
+	// MinIO (media library)
+	viper.BindEnv("minio.endpoint", "MINIO_ENDPOINT")
+	viper.BindEnv("minio.access_key", "MINIO_ACCESS_KEY")
+	viper.BindEnv("minio.secret_key", "MINIO_SECRET_KEY")
+	viper.BindEnv("minio.bucket", "MINIO_BUCKET")
+	viper.BindEnv("minio.use_ssl", "MINIO_USE_SSL")
+	viper.BindEnv("minio.public_base_url", "MINIO_PUBLIC_BASE_URL")
 
 	// JWT
 	viper.BindEnv("jwt.secret", "JWT_SECRET")

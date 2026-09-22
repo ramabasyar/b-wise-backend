@@ -170,6 +170,19 @@ func SetupWithLogger(
 		}
 	}
 
+	// ===== BWM: MEDIA LIBRARY (auth JWKS + permission media.*) =====
+	if h.Media != nil {
+		media := api.Group("/media")
+		media.Use(jwksAuth.RequireAuth(), permCheck.CheckAccess())
+		{
+			media.GET("", permCheck.RequirePermission("media.read"), h.Media.List)
+			media.GET("/:id", permCheck.RequirePermission("media.read"), h.Media.Get)
+			media.POST("/upload", permCheck.RequirePermission("media.write"), h.Media.Upload)
+			media.PATCH("/:id", permCheck.RequirePermission("media.write"), h.Media.UpdateMeta)
+			media.DELETE("/:id", permCheck.RequirePermission("media.write"), h.Media.Delete)
+		}
+	}
+
 
 	return r
 }
@@ -178,4 +191,5 @@ func SetupWithLogger(
 type Handlers struct {
 	Content *handler.ContentHandler // admin BWM (contents.*)
 	Public  *handler.PublicHandler  // API publik read-only
+	Media   *handler.MediaHandler   // media library (media.*)
 }
