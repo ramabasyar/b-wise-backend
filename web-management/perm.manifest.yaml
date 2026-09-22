@@ -21,4 +21,19 @@ permissions:
   - permission: settings.write
     description: Kelola pengaturan web, taksonomi & redirect
 
-menu: []  # menu portal menyusul saat UI admin BWM dibangun (F1)
+menu:
+  - label: "Web Management"
+    path: /dashboard/web-management
+    icon: Globe
+    sort_order: 40
+    children:
+      - label: Konten Web
+        path: /dashboard/web-management/posts
+        icon: FileText
+        required_permission: contents.read
+        sort_order: 1
+      - label: Media Library
+        path: /dashboard/web-management/media
+        icon: Image
+        required_permission: media.read
+        sort_order: 2

@@ -143,6 +143,21 @@ type Post struct {
 
 func (Post) TableName() string { return "posts" }
 
+// MarshalJSON — translations & seo dikirim sbg OBJEK ter-parse (bukan string jsonb
+// mentah) supaya UI editor & konsumen API tinggal pakai.
+func (p Post) MarshalJSON() ([]byte, error) {
+	type Alias Post
+	tr := map[string]PostTranslation{}
+	if p.Translations != "" {
+		_ = json.Unmarshal([]byte(p.Translations), &tr)
+	}
+	return json.Marshal(struct {
+		Alias
+		Translations map[string]PostTranslation `json:"translations"`
+		SEO          SEO                        `json:"seo"`
+	}{Alias(p), tr, SEOOf(p.SEO)})
+}
+
 // SetTr — simpan satu locale (marshal seluruh map).
 func (p *Post) SetTr(locale string, t PostTranslation) {
 	m := TrOf[PostTranslation](p.Translations)
@@ -173,6 +188,19 @@ type Page struct {
 }
 
 func (Page) TableName() string { return "pages" }
+
+func (p Page) MarshalJSON() ([]byte, error) {
+	type Alias Page
+	tr := map[string]PageTranslation{}
+	if p.Translations != "" {
+		_ = json.Unmarshal([]byte(p.Translations), &tr)
+	}
+	return json.Marshal(struct {
+		Alias
+		Translations map[string]PageTranslation `json:"translations"`
+		SEO          SEO                        `json:"seo"`
+	}{Alias(p), tr, SEOOf(p.SEO)})
+}
 
 func (p *Page) SetTr(locale string, t PageTranslation) {
 	m := TrOf[PageTranslation](p.Translations)
@@ -208,6 +236,19 @@ type Event struct {
 
 func (Event) TableName() string { return "events" }
 
+func (e Event) MarshalJSON() ([]byte, error) {
+	type Alias Event
+	tr := map[string]EventTranslation{}
+	if e.Translations != "" {
+		_ = json.Unmarshal([]byte(e.Translations), &tr)
+	}
+	return json.Marshal(struct {
+		Alias
+		Translations map[string]EventTranslation `json:"translations"`
+		SEO          SEO                        `json:"seo"`
+	}{Alias(e), tr, SEOOf(e.SEO)})
+}
+
 func (e *Event) SetTr(locale string, t EventTranslation) {
 	m := TrOf[EventTranslation](e.Translations)
 	if m == nil {
@@ -235,6 +276,18 @@ type Banner struct {
 }
 
 func (Banner) TableName() string { return "banners" }
+
+func (b Banner) MarshalJSON() ([]byte, error) {
+	type Alias Banner
+	tr := map[string]BannerTranslation{}
+	if b.Translations != "" {
+		_ = json.Unmarshal([]byte(b.Translations), &tr)
+	}
+	return json.Marshal(struct {
+		Alias
+		Translations map[string]BannerTranslation `json:"translations"`
+	}{Alias(b), tr})
+}
 
 func (b *Banner) SetTr(locale string, t BannerTranslation) {
 	m := TrOf[BannerTranslation](b.Translations)
