@@ -197,6 +197,68 @@ func ensureBlocks(paras []string, extraImages []string) []blocks.Block {
 	return out
 }
 
+// sectionsToBlocks — expand contentStructure.sections → blocks (heading + image before/after + content).
+// Menjaga urutan render identik dgn KabarKampusDetail (legacy).
+func sectionsToBlocks(cs map[string]any) []blocks.Block {
+	var out []blocks.Block
+	rawSections, ok := cs["sections"].([]any)
+	if !ok {
+		return nil
+	}
+	for _, rs := range rawSections {
+		sec, ok := rs.(map[string]any)
+		if !ok {
+			continue
+		}
+		if h := str(sec, "heading"); h != "" {
+			out = append(out, blocks.Block{Type: "heading", Data: map[string]any{"text": h, "level": float64(3)}})
+		}
+		img := str(sec, "image")
+		imgBefore := str(sec, "imagePosition") == "before"
+		if img != "" && imgBefore {
+			out = append(out, blocks.Block{Type: "image", Data: map[string]any{"url": img, "alt": str(sec, "caption")}})
+		}
+		if content, ok := sec["content"].([]any); ok {
+			for _, rc := range content {
+				switch v := rc.(type) {
+				case string:
+					if strings.TrimSpace(v) != "" {
+						out = append(out, blocks.Block{Type: "paragraph", Data: map[string]any{"text": v}})
+					}
+				case map[string]any:
+					t := str(v, "type")
+					if t == "paragraph" {
+						if txt := str(v, "text"); strings.TrimSpace(txt) != "" {
+							out = append(out, blocks.Block{Type: "paragraph", Data: map[string]any{"text": txt}})
+						}
+					} else if t == "image" {
+						if src := str(v, "src"); src != "" {
+							out = append(out, blocks.Block{Type: "image", Data: map[string]any{"url": src, "alt": str(v, "caption")}})
+						}
+					}
+				}
+			}
+		}
+		if img != "" && !imgBefore {
+			out = append(out, blocks.Block{Type: "image", Data: map[string]any{"url": img, "alt": str(sec, "caption")}})
+		}
+	}
+	return out
+}
+
+// contentToBlocks — paragraph + sections + trailing images (image2/3/4) — urutan render legacy.
+func contentToBlocks(m map[string]any) []blocks.Block {
+	cs, _ := m["contentStructure"].(map[string]any)
+	out := ensureBlocks(paragraphsOf(m), nil)
+	out = append(out, sectionsToBlocks(cs)...)
+	for _, k := range []string{"image2", "image3", "image4"} {
+		if v := str(m, k); v != "" {
+			out = append(out, blocks.Block{Type: "image", Data: map[string]any{"url": v, "alt": ""}})
+		}
+	}
+	return out
+}
+
 // ==================== import ====================
 
 func runImport(db *gorm.DB, src string) {
@@ -219,14 +281,14 @@ func runImport(db *gorm.DB, src string) {
 			"id": {
 				Title: str(r, "title"), Excerpt: str(r, "excerpt"), Author: str(r, "author"),
 				Category: str(r, "category"),
-				Blocks:   ensureBlocks(paragraphsOf(r), []string{str(r, "image2"), str(r, "image3")}),
+				Blocks:   contentToBlocks(r),
 			},
 		}
 		if er, ok := enBySlug[slug]; ok {
 			tr["en"] = entity.PostTranslation{
 				Title: str(er, "title"), Excerpt: str(er, "excerpt"), Author: str(er, "author"),
 				Category: str(er, "category"),
-				Blocks:   ensureBlocks(paragraphsOf(er), []string{str(er, "image2"), str(er, "image3")}),
+				Blocks:   contentToBlocks(er),
 			}
 		}
 		upsertPost(db, slug, str(r, "image"), tr, parseDateID(str(r, "date")), "")
