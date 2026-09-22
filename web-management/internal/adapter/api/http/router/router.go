@@ -98,29 +98,84 @@ func SetupWithLogger(
 	// API routes (protected by JWKS auth)
 
 	api := r.Group("/api")
+	h := handlers
+	permCheck := middleware.NewPermissionCheck(permissionURL, serviceName).
+		WithSSO(ssoURL, serviceClientID, serviceClientSecret)
 
-	// Permission middleware — siap pakai (selaras Permission Service Tahap 1-3:
-	// wildcard '*', batch check, cache invalidation otomatis).
-	// Contoh wiring entity "items":
-	//
-	//	permCheck := middleware.NewPermissionCheck(permissionURL, serviceName).
-	//		WithSSO(ssoURL, serviceClientID, serviceClientSecret)
-	//	items := api.Group("/items")
-	//	items.Use(jwksAuth.RequireAuth())
-	//	items.Use(permCheck.CheckAccess())
-	//	{
-	//		items.GET("", permCheck.RequirePermission("items.read"), h.Item.List)
-	//		items.POST("", permCheck.RequirePermission("items.write"), h.Item.Create)
-	//		tools.GET("", permCheck.RequireAnyPermission("items.read", "items.admin"), h.Item.List)
-	//	}
-	_ = api
+
+	// ===== BWM: API PUBLIK (read-only, tanpa auth; cache+ETag) =====
+	if h.Public != nil {
+		pub := r.Group("/api/v1/public")
+		pub.GET("/posts", h.Public.Posts)
+		pub.GET("/posts/:slug", h.Public.PostBySlug)
+		pub.GET("/banners", h.Public.Banners)
+		pub.GET("/events", h.Public.Events)
+		pub.GET("/pages/:slug", h.Public.PageBySlug)
+		pub.GET("/documents", h.Public.Documents)
+	}
+
+	// ===== BWM: ADMIN (auth JWKS + permission contents.*) =====
+	if h.Content != nil {
+		posts := api.Group("/posts")
+		posts.Use(jwksAuth.RequireAuth(), permCheck.CheckAccess())
+		{
+			posts.GET("", permCheck.RequirePermission("contents.read"), h.Content.ListPosts)
+			posts.GET("/:id", permCheck.RequirePermission("contents.read"), h.Content.GetPost)
+			posts.POST("", permCheck.RequirePermission("contents.write"), h.Content.CreatePost)
+			posts.PUT("/:id", permCheck.RequirePermission("contents.write"), h.Content.UpdatePost)
+			posts.DELETE("/:id", permCheck.RequirePermission("contents.write"), h.Content.DeletePost)
+			posts.POST("/:id/publish", permCheck.RequirePermission("contents.write"), h.Content.PublishPost)
+			posts.POST("/:id/archive", permCheck.RequirePermission("contents.write"), h.Content.ArchivePost)
+		}
+
+		events := api.Group("/events")
+		events.Use(jwksAuth.RequireAuth(), permCheck.CheckAccess())
+		{
+			events.GET("", permCheck.RequirePermission("contents.read"), h.Content.ListEvents)
+			events.GET("/:id", permCheck.RequirePermission("contents.read"), h.Content.GetEvent)
+			events.POST("", permCheck.RequirePermission("contents.write"), h.Content.CreateEvent)
+			events.PUT("/:id", permCheck.RequirePermission("contents.write"), h.Content.UpdateEvent)
+			events.DELETE("/:id", permCheck.RequirePermission("contents.write"), h.Content.DeleteEvent)
+			events.POST("/:id/publish", permCheck.RequirePermission("contents.write"), h.Content.PublishEvent)
+			events.POST("/:id/archive", permCheck.RequirePermission("contents.write"), h.Content.ArchiveEvent)
+		}
+
+		banners := api.Group("/banners")
+		banners.Use(jwksAuth.RequireAuth(), permCheck.CheckAccess())
+		{
+			banners.GET("", permCheck.RequirePermission("contents.read"), h.Content.ListBanners)
+			banners.POST("", permCheck.RequirePermission("contents.write"), h.Content.CreateBanner)
+			banners.PUT("/:id", permCheck.RequirePermission("contents.write"), h.Content.UpdateBanner)
+			banners.DELETE("/:id", permCheck.RequirePermission("contents.write"), h.Content.DeleteBanner)
+		}
+
+		pages := api.Group("/pages")
+		pages.Use(jwksAuth.RequireAuth(), permCheck.CheckAccess())
+		{
+			pages.GET("", permCheck.RequirePermission("contents.read"), h.Content.ListPages)
+			pages.GET("/:id", permCheck.RequirePermission("contents.read"), h.Content.GetPage)
+			pages.POST("", permCheck.RequirePermission("contents.write"), h.Content.CreatePage)
+			pages.PUT("/:id", permCheck.RequirePermission("contents.write"), h.Content.UpdatePage)
+			pages.DELETE("/:id", permCheck.RequirePermission("contents.write"), h.Content.DeletePage)
+			pages.POST("/:id/publish", permCheck.RequirePermission("contents.write"), h.Content.PublishPage)
+		}
+
+		documents := api.Group("/documents")
+		documents.Use(jwksAuth.RequireAuth(), permCheck.CheckAccess())
+		{
+			documents.GET("", permCheck.RequirePermission("contents.read"), h.Content.ListDocuments)
+			documents.POST("", permCheck.RequirePermission("contents.write"), h.Content.CreateDocument)
+			documents.PUT("/:id", permCheck.RequirePermission("contents.write"), h.Content.UpdateDocument)
+			documents.DELETE("/:id", permCheck.RequirePermission("contents.write"), h.Content.DeleteDocument)
+		}
+	}
+
 
 	return r
 }
 
 // Handlers holds all route handlers for the service.
-// Add your handler fields here when creating new entities.
 type Handlers struct {
-	// Item  *handler.ItemHandler  // sample
-	_ struct{} // prevent empty struct warning
+	Content *handler.ContentHandler // admin BWM (contents.*)
+	Public  *handler.PublicHandler  // API publik read-only
 }

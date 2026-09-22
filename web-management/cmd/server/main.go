@@ -10,11 +10,15 @@ import (
 	"syscall"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
+	"github.com/rama/b-wise/web-management/internal/adapter/api/http/handler"
 	"github.com/rama/b-wise/web-management/internal/adapter/api/http/router"
 	"github.com/rama/b-wise/web-management/internal/adapter/cache"
 	"github.com/rama/b-wise/web-management/internal/adapter/config"
 	"github.com/rama/b-wise/web-management/internal/adapter/database"
 	"github.com/rama/b-wise/web-management/internal/adapter/logger"
+	"github.com/rama/b-wise/web-management/internal/domain/entity"
+	"github.com/rama/b-wise/web-management/internal/domain/service"
 	"github.com/rama/b-wise/web-management/internal/service/permissionsync"
 	"gorm.io/gorm"
 )
@@ -65,11 +69,16 @@ func main() {
 			defer database.Close(db)
 			zapLogger.Info("[startup] database connected")
 
-			// Auto-migrate your entities here:
-			// err = database.AutoMigrate(db, &entity.YourEntity{})
-			// if err != nil {
-			// 	zapLogger.Info(fmt.Sprintf("[startup] auto-migrate error: %v", err))
-			// }
+			// Auto-migrate entitas BWM
+			err = database.AutoMigrate(db,
+				&entity.Post{}, &entity.Page{}, &entity.Event{},
+				&entity.Banner{}, &entity.MediaAsset{}, &entity.Document{},
+			)
+			if err != nil {
+				zapLogger.Info(fmt.Sprintf("[startup] auto-migrate error: %v", err))
+			} else {
+				zapLogger.Info("[startup] auto-migrate OK (6 entitas BWM)")
+			}
 		}
 	}
 
@@ -91,14 +100,19 @@ func main() {
 	}
 
 	// ===== Initialize handlers =====
-	// Create your handlers and pass them to the router:
-	//
-	// myHandler := handler.NewMyEntityHandler(myService)
-	//
-	// handlers := &router.Handlers{
-	// 	// Item: myHandler,  // uncomment field in router.Handlers first
-	// }
 	handlers := &router.Handlers{}
+	if db != nil {
+		var redisClient *redis.Client
+		if redisCache != nil {
+			redisClient = redisCache.Client()
+		}
+		contentSvc := service.NewContentService(db, redisClient)
+		handlers = &router.Handlers{
+			Content: handler.NewContentHandler(contentSvc),
+			Public:  handler.NewPublicHandler(contentSvc, redisClient),
+		}
+		zapLogger.Info("[startup] BWM content service ready (admin + public API)")
+	}
 
 	// ===== Setup router =====
 	zapGlobal := zapLogger.SugaredLogger.Desugar()

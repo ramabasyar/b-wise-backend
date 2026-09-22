@@ -5,7 +5,7 @@ import "time"
 // Base contains common fields for all entities.
 // Embed this in your entity structs.
 type Base struct {
-	ID        string    `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	ID        string    `json:"id" gorm:"primaryKey;type:varchar(36);default:gen_random_uuid()"`
 	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }
