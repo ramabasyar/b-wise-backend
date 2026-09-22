@@ -65,6 +65,11 @@ class Block(BaseModel):
     day: int
     slot_ids: list[str] = []
 
+class CalendarBlock(BaseModel):
+    """Hari diblokir kalender akademik (libur/acara ≥ 50% minggu efektif semester; F3v2)."""
+    day: int
+    reason: str = ""
+
 class Session(BaseModel):
     """Satu sesi mingguan (offering bisa punya beberapa)."""
     key: str                      # unik: offering_id#session_no
@@ -93,6 +98,7 @@ class SolveRequest(BaseModel):
     room_types: list[RoomType] | None = None
     slots: list[Slot]
     lecturer_blocks: list[Block] | None = None
+    calendar_blocks: list[CalendarBlock] | None = None  # F3v2: hari libur/acara dominan → blokir pola mingguan
     solve_config: SolverConfig | None = None
     time_limit_seconds: int = 60
     locked: list[dict] | None = None  # F2: {session_key, slot_id, room_id}
@@ -131,6 +137,8 @@ def solve_stream(req: SolveRequest):
     t0 = time.time()
     if req.lecturer_blocks is None:
         req.lecturer_blocks = []
+    if req.calendar_blocks is None:
+        req.calendar_blocks = []
     if req.room_types is None:
         req.room_types = []
     if req.locked is None:
@@ -220,6 +228,28 @@ def solve_stream(req: SolveRequest):
     if blocked_days or blocked_slots:
         tlog(f"ketersediaan v2 aktif: {len(blocked_days)} dosen hari-blok, {len(blocked_slots)} dosen slot-blok (window)")
 
+    # ---------- F3v2 kalender akademik: hari terblokir global ----------
+    DAY_NAMES = {1: "Senin", 2: "Selasa", 3: "Rabu", 4: "Kamis", 5: "Jumat", 6: "Sabtu", 7: "Minggu"}
+    cal_blocked_days: set[int] = {b.day for b in req.calendar_blocks}
+    cal_note = ""
+    if cal_blocked_days:
+        cal_note = " · kalender: " + ", ".join(DAY_NAMES.get(d, str(d)) for d in sorted(cal_blocked_days)) + " dominan libur/acara"
+        tlog(f"kalender akademik aktif: hari diblokir {sorted(cal_blocked_days)} — " +
+             "; ".join(b.reason for b in req.calendar_blocks))
+
+    # ---------- locked: parse dini (x-creation F3v2 butuh pengecualian locked) ----------
+    slot_idx = {s.id: j for j, s in enumerate(slots)}
+    room_idx = {r.id: k for k, r in enumerate(rooms)}
+    locked_by_idx: dict[int, tuple[int, int]] = {}
+    for lk in req.locked:
+        jj, kk = slot_idx.get(lk.get("slot_id")), room_idx.get(lk.get("room_id"))
+        if jj is None or kk is None:
+            continue
+        for i, s in enumerate(sessions):
+            if s.key == lk.get("session_key"):
+                locked_by_idx[i] = (jj, kk)
+                break
+
     # ---------- var x[(i,j,k)] + filter H2/H3 ----------
     compat: dict[str, set[str]] | None = None
     if req.room_types:
@@ -253,6 +283,10 @@ def solve_stream(req: SolveRequest):
         for j, sl in enumerate(slots):
             blk = session_block(i, j)
             if blk is None:
+                continue
+            # F3v2 kalender: hari terblokir kalender akademik — KECUALI slot locked
+            # sesi ini sendiri (keputusan eksplisit admin menang atas agregasi).
+            if sl.day in cal_blocked_days and locked_by_idx.get(i, (None, None))[0] != j:
                 continue
             # H7: hari terblokir dosen (full-day) — difilter di DOMAIN supaya greedy,
             # local search, dan CP-SAT semuanya patuh (bukan cuma constraint CP-SAT).
@@ -293,8 +327,7 @@ def solve_stream(req: SolveRequest):
                         m.Add(v == 0)
 
     # ---------- F2: locked dipertahankan paksa ----------
-    slot_idx = {s.id: j for j, s in enumerate(slots)}
-    room_idx = {r.id: k for k, r in enumerate(rooms)}
+    # (slot_idx/room_idx/locked_by_idx sudah di-parse dini — dipakai x-creation F3v2)
     for lk in req.locked:
         for i, s in enumerate(sessions):
             if s.key == lk.get("session_key"):
@@ -431,6 +464,10 @@ def solve_stream(req: SolveRequest):
             return False
         if any(any(slots[jj].id in blocked_slots.get(lid, ()) for jj in blk) for lid in lids):
             return False
+        # F3v2 kalender: hari terblokir kalender — pengecualian slot locked sesi ini
+        lj = locked_by_idx.get(i)
+        if slots[j].day in cal_blocked_days and (lj is None or lj[0] != j):
+            return False
         if overlaps(room_busy[k], s0, e0) or overlaps(group_busy[s.group_id], s0, e0):
             return False
         for lid in constraint_ids(s):
@@ -474,9 +511,13 @@ def solve_stream(req: SolveRequest):
         bd = [blocked_days.get(lid, ()) for lid in lids]
         bs = [blocked_slots.get(lid, ()) for lid in lids]
         out: list[tuple[int, int]] = []
+        lj = locked_by_idx.get(i)
         for j in range(len(slots)):
             blk = session_block(i, j)
             if not blk:
+                continue
+            # F3v2 kalender — hard di jalur greedy pass-2/evict + kandidat LS
+            if slots[j].day in cal_blocked_days and (lj is None or j != lj[0]):
                 continue
             if any(slots[j].day in b for b in bd):
                 continue
@@ -607,8 +648,9 @@ def solve_stream(req: SolveRequest):
                 return False
             return all(not busy_hit(lb2[lid], s0, e0) for lid in constraint_ids(s))
 
-        sess_ids = list(final_place.keys())
-        for _ in range(30000):
+        # sesi LOCKED tidak digoyang LS (sebelumnya bisa tergeser senyap di jalur fallback greedy)
+        sess_ids = [i for i in final_place.keys() if i not in locked_by_idx]
+        for _ in range(30000 if sess_ids else 0):
             i = rnd.choice(sess_ids)
             cc = cands_cache.get(i)
             if not cc:
@@ -709,9 +751,10 @@ def solve_stream(req: SolveRequest):
             tlog("CP-SAT gagal → hasil GREEDY+LS dikembalikan (feasible by construction)")
             yield emit({
                 "phase": "done", "progress": 100, "elapsed": elapsed,
-                "message": f"Selesai (greedy+optimasi): {len(final_place)}/{len(sessions)} sesi terjadwal dalam {elapsed}s — {ls_moves} perbaikan sebaran diterapkan." + (f" [{len(unplaced)} sesi tanpa ruang cukup besar]" if unplaced else ""),
+                "message": f"Selesai (greedy+optimasi): {len(final_place)}/{len(sessions)} sesi terjadwal dalam {elapsed}s — {ls_moves} perbaikan sebaran diterapkan.{cal_note}" + (f" [{len(unplaced)} sesi tanpa ruang cukup besar]" if unplaced else ""),
                 "stats": {"assigned": len(final_place), "unassigned": len(sessions) - len(final_place),
-                          "soft_score": -1, "status": "GREEDY+LS"},
+                          "soft_score": -1, "status": "GREEDY+LS",
+                          "calendar_blocked_days": sorted(cal_blocked_days)},
                 "assignments": assignments,
             })
             return
@@ -737,10 +780,11 @@ def solve_stream(req: SolveRequest):
             soft = 0
     yield emit({
         "phase": "done", "progress": 100, "elapsed": elapsed,
-        "message": f"Selesai: {assigned}/{len(sessions)} sesi terjadwal dalam {elapsed}s (skor soft: {soft})." + (f" [{len(unplaced)} sesi tanpa ruang cukup besar]" if unplaced else ""),
+        "message": f"Selesai: {assigned}/{len(sessions)} sesi terjadwal dalam {elapsed}s (skor soft: {soft}).{cal_note}" + (f" [{len(unplaced)} sesi tanpa ruang cukup besar]" if unplaced else ""),
         "stats": {
             "assigned": assigned, "unassigned": len(sessions) - assigned,
             "soft_score": soft, "status": solver.StatusName(status),
+            "calendar_blocked_days": sorted(cal_blocked_days),
         },
         "assignments": assignments,
     })

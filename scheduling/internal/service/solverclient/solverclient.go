@@ -35,15 +35,16 @@ type SolverEvent struct {
 
 // SolverPayload — model yang dikirim ke sidecar.
 type SolverPayload struct {
-	JobID            string             `json:"job_id"`
-	Sessions         []SolverSession    `json:"sessions"`
-	Rooms            []SolverRoom       `json:"rooms"`
-	RoomTypes        []SolverRoomType   `json:"room_types"`
-	Slots            []SolverSlot       `json:"slots"`
-	LecturerBlocks   []SolverBlock      `json:"lecturer_blocks"`
-	SolveConfig      *SolverConfig      `json:"solve_config,omitempty"` // bobot soft constraint (default 5/2/1)
-	TimeLimitSeconds int                `json:"time_limit_seconds"`
-	Locked           []map[string]any   `json:"locked"`
+	JobID            string                `json:"job_id"`
+	Sessions         []SolverSession       `json:"sessions"`
+	Rooms            []SolverRoom          `json:"rooms"`
+	RoomTypes        []SolverRoomType      `json:"room_types"`
+	Slots            []SolverSlot          `json:"slots"`
+	LecturerBlocks   []SolverBlock         `json:"lecturer_blocks"`
+	CalendarBlocks   []SolverCalendarBlock `json:"calendar_blocks,omitempty"`
+	SolveConfig      *SolverConfig         `json:"solve_config,omitempty"` // bobot soft constraint (default 5/2/1)
+	TimeLimitSeconds int                   `json:"time_limit_seconds"`
+	Locked           []map[string]any      `json:"locked"`
 }
 
 // SolverConfig — bobot soft constraint dinamis (tabel solve_configs).
@@ -62,18 +63,18 @@ type SolverRoomType struct {
 }
 
 type SolverSession struct {
-	Key           string `json:"key"`
-	OfferingID    string `json:"offering_id"`
-	CourseCode    string `json:"course_code"`
-	CourseType    string `json:"course_type"`
-	RoomNeed      string `json:"room_need"` // theory|practice|any|none — hasil resolve kamus course_types
-	DurationSlots int    `json:"duration_slots"`                 // fallback bila duration_minutes kosong
-	DurationMinutes int  `json:"duration_minutes,omitempty"` // prioritas: blok slot berurutan span ≥ menit
-	RoomType      string `json:"room_type"`
-	GroupID       string `json:"group_id"`
-	GroupSize     int    `json:"group_size"`
-	LecturerID    string `json:"lecturer_id"`                  // dosen utama (display/fallback)
-	LecturerIDs   []string `json:"lecturer_ids,omitempty"`      // H5/H7: semua dosen yang harus bebas slot (parallel)
+	Key             string   `json:"key"`
+	OfferingID      string   `json:"offering_id"`
+	CourseCode      string   `json:"course_code"`
+	CourseType      string   `json:"course_type"`
+	RoomNeed        string   `json:"room_need"`                  // theory|practice|any|none — hasil resolve kamus course_types
+	DurationSlots   int      `json:"duration_slots"`             // fallback bila duration_minutes kosong
+	DurationMinutes int      `json:"duration_minutes,omitempty"` // prioritas: blok slot berurutan span ≥ menit
+	RoomType        string   `json:"room_type"`
+	GroupID         string   `json:"group_id"`
+	GroupSize       int      `json:"group_size"`
+	LecturerID      string   `json:"lecturer_id"`            // dosen utama (display/fallback)
+	LecturerIDs     []string `json:"lecturer_ids,omitempty"` // H5/H7: semua dosen yang harus bebas slot (parallel)
 }
 type SolverRoom struct {
 	ID       string `json:"id"`
@@ -92,6 +93,13 @@ type SolverBlock struct {
 	LecturerID string   `json:"lecturer_id"`
 	Day        int      `json:"day"`
 	SlotIDs    []string `json:"slot_ids,omitempty"` // kosong = blokir hari penuh; terisi = blokir slot spesifik
+}
+
+// SolverCalendarBlock — hari yang diblokir kalender akademik untuk POLA mingguan
+// (agregasi libur/acara ≥ 50% minggu efektif semester; F3v2).
+type SolverCalendarBlock struct {
+	Day    int    `json:"day"`
+	Reason string `json:"reason,omitempty"`
 }
 
 // StreamSolve — POST /solve, panggil onEvent per baris NDJSON.

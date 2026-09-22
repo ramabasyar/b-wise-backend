@@ -189,7 +189,7 @@ func (s *SolveService) buildModel(termID string) (*solverclient.SolverPayload, e
 	}
 
 	p := &solverclient.SolverPayload{Rooms: make([]solverclient.SolverRoom, 0, len(rooms)),
-		RoomTypes:       make([]solverclient.SolverRoomType, 0, len(roomTypes)),
+		RoomTypes:      make([]solverclient.SolverRoomType, 0, len(roomTypes)),
 		Slots:          make([]solverclient.SolverSlot, 0, len(slots)),
 		LecturerBlocks: make([]solverclient.SolverBlock, 0, len(avails))}
 	for _, rt := range roomTypes {
@@ -288,6 +288,57 @@ func (s *SolveService) buildModel(termID string) (*solverclient.SolverPayload, e
 			p.LecturerBlocks = append(p.LecturerBlocks, solverclient.SolverBlock{LecturerID: lid, Day: d, SlotIDs: ids})
 		}
 	}
+	// ---------- kalender akademik → batasan pola mingguan (F3v2) ----------
+	// CalendarEvent per tanggal, sedangkan solver menyusun POLA mingguan.
+	// Hari grid diblokir hanya kalau libur/acara menutup hari itu di ≥ 50%
+	// minggu efektif semester — gangguan 1-2 tanggal tetap urusan exception
+	// per tanggal (Jadwal Harian), bukan batasan pola.
+	const calBlockRatio = 0.5
+	var term entity.Term
+	if err := s.db.Where("id = ?", termID).First(&term).Error; err == nil &&
+		!term.StartDate.IsZero() && !term.EndDate.IsZero() && !term.EndDate.Before(term.StartDate) {
+		var calEvents []entity.CalendarEvent
+		s.db.Where("term_id = ?", termID).Find(&calEvents)
+		if len(calEvents) > 0 {
+			// minggu efektif = minggu ISO unik dalam rentang semester
+			weeks := map[string]bool{}
+			for d := term.StartDate; !d.After(term.EndDate); d = d.AddDate(0, 0, 1) {
+				y, w := d.ISOWeek()
+				weeks[fmt.Sprintf("%04d-W%02d", y, w)] = true
+			}
+			// tanggal kalender unik per hari-grid (kolom DATE bisa terbaca
+			// dengan komponen waktu → potong 10 char pertama)
+			dateSeen := map[string]bool{}
+			perDay := map[int]int{}
+			for _, ev := range calEvents {
+				ds := ev.Date
+				if len(ds) > 10 {
+					ds = ds[:10]
+				}
+				if dateSeen[ds] {
+					continue
+				}
+				dateSeen[ds] = true
+				t, err := time.Parse("2006-01-02", ds)
+				if err != nil {
+					continue
+				}
+				perDay[(int(t.Weekday())+6)%7+1]++ // 1=Senin..7=Minggu (format grid)
+			}
+			dayNames := []string{"", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"}
+			for d := 1; d <= 7; d++ {
+				if !activeDays[d] || perDay[d] == 0 || len(weeks) == 0 {
+					continue // hari tanpa slot di grid / tidak ada event
+				}
+				if float64(perDay[d])/float64(len(weeks)) >= calBlockRatio {
+					p.CalendarBlocks = append(p.CalendarBlocks, solverclient.SolverCalendarBlock{
+						Day:    d,
+						Reason: fmt.Sprintf("%s: %d/%d minggu terganggu kalender", dayNames[d], perDay[d], len(weeks)),
+					})
+				}
+			}
+		}
+	}
 	// kebijakan durasi SKS (default Permendikbud 50/170)
 	var tp entity.TimePolicy
 	if err := s.db.Where("code = ?", "default").First(&tp).Error; err != nil || tp.SksMinutesTheory <= 0 {
@@ -335,12 +386,12 @@ func (s *SolveService) buildModel(termID string) (*solverclient.SolverPayload, e
 			if o.ClassGroup != nil {
 				size = o.ClassGroup.SizeEst
 			}
-				p.Sessions = append(p.Sessions, solverclient.SolverSession{
-					Key: fmt.Sprintf("%s#%d", o.ID, n), OfferingID: o.ID,
-					CourseCode: ccode, CourseType: ctype, RoomNeed: cneed, RoomType: o.RoomType,
-					GroupID: o.ClassGroupID, GroupSize: size, LecturerID: lect, LecturerIDs: cLects,
-					DurationSlots: dur, DurationMinutes: theoryMin,
-				})
+			p.Sessions = append(p.Sessions, solverclient.SolverSession{
+				Key: fmt.Sprintf("%s#%d", o.ID, n), OfferingID: o.ID,
+				CourseCode: ccode, CourseType: ctype, RoomNeed: cneed, RoomType: o.RoomType,
+				GroupID: o.ClassGroupID, GroupSize: size, LecturerID: lect, LecturerIDs: cLects,
+				DurationSlots: dur, DurationMinutes: theoryMin,
+			})
 		}
 		// sesi praktikum terpisah (ruang for_practice, durasi blok sks × menit praktikum)
 		if o.PracticeSks > 0 {
@@ -723,7 +774,6 @@ func intOf(v any) int {
 	return 0
 }
 
-
 // ==================== Penyesuaian Jadwal — Lapis 1 (Move) ====================
 
 var dayNames = []string{"", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"}
@@ -841,7 +891,6 @@ func (s *SolveService) moveCheckLecturerDay(lids []string, day int) error {
 	}
 	return nil
 }
-
 
 // validateMove — seluruh validasi pemindahan sesi (dipakai MoveEntry manual
 // maupun engine penyesuaian otomatis Lapis 2). Return jam mulai/selesai baru.
@@ -1173,7 +1222,6 @@ func (s *SolveService) DecideAdjustment(id string, approve bool, actorID string)
 	return &p, nil
 }
 
-
 // ==================== Penyesuaian Jadwal — Fase 3: Exception per Tanggal ====================
 
 // DaySession — satu baris jadwal efektif pada sebuah tanggal.
@@ -1284,8 +1332,8 @@ func (s *SolveService) DayView(date, termID string) (map[string]any, error) {
 			EntryID: e.ID, CourseCode: e.CourseCode,
 			CourseName: offMap[e.OfferingID].course,
 			GroupCode:  "", Lecturer: offMap[e.OfferingID].lect,
-			Jam:        e.StartTime + "–" + e.EndTime,
-			RoomCode:   "", Status: "normal",
+			Jam:      e.StartTime + "–" + e.EndTime,
+			RoomCode: "", Status: "normal",
 		}
 		if e.Room != nil {
 			ds.RoomCode = e.Room.Code
