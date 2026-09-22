@@ -42,13 +42,18 @@ menu:
         icon: CalendarDays
         required_permission: contents.read
         sort_order: 3
+      - label: Halaman Statis
+        path: /dashboard/web-management/pages
+        icon: FileText
+        required_permission: contents.read
+        sort_order: 4
       - label: Banner Slider
         path: /dashboard/web-management/banners
         icon: Image
         required_permission: contents.read
-        sort_order: 4
+        sort_order: 5
       - label: Dokumen
         path: /dashboard/web-management/documents
         icon: FileText
         required_permission: contents.read
-        sort_order: 5
+        sort_order: 6
