@@ -123,6 +123,8 @@ func SetupWithLogger(
 		pub.GET("/posts", h.Public.Posts)
 		pub.GET("/posts/:slug/related", h.Public.RelatedPosts)
 		pub.GET("/terms", h.Public.Terms)
+		pub.GET("/sitemap.xml", h.Public.Sitemap)
+		pub.GET("/feed.xml", h.Public.Feed)
 		pub.GET("/posts/:slug", h.Public.PostBySlug)
 		pub.GET("/banners", h.Public.Banners)
 		pub.GET("/events", h.Public.Events)

@@ -1,10 +1,13 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -1170,4 +1173,80 @@ func (s *ContentService) PublicRelatedPosts(slug, locale string, limit int) ([]P
 		out = append(out, s.publicPostOf(&rows[i], locale, false))
 	}
 	return out, nil
+}
+
+// ==================== F2: SEO SUITE (sitemap.xml + RSS) ====================
+
+// publicBaseURL — basis URL web publik (env BWM_PUBLIC_BASE_URL, fallback produksi).
+func publicBaseURL() string {
+	if v := os.Getenv("BWM_PUBLIC_BASE_URL"); v != "" {
+		return strings.TrimRight(v, "/")
+	}
+	return "https://binawan.ac.id"
+}
+
+func xmlEscape(s string) string {
+	var b bytes.Buffer
+	_ = xml.EscapeText(&b, []byte(s))
+	return b.String()
+}
+
+// SitemapXML — sitemap konten tayang (posts -> /kabar-kampus/<slug>).
+func (s *ContentService) SitemapXML() ([]byte, error) {
+	now := time.Now()
+	var rows []entity.Post
+	err := s.db.Model(&entity.Post{}).
+		Where("status = ? AND (publish_at IS NULL OR publish_at <= ?) AND (unpublish_at IS NULL OR unpublish_at > ?)",
+			entity.StatusPublished, now, now).
+		Select("slug, updated_at, publish_at").
+		Order("updated_at DESC").Limit(5000).Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	base := publicBaseURL()
+	var b strings.Builder
+	b.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+	b.WriteString("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n")
+	for _, p := range rows {
+		lastmod := p.UpdatedAt
+		if p.PublishAt != nil && p.PublishAt.After(lastmod) {
+			lastmod = *p.PublishAt
+		}
+		fmt.Fprintf(&b, "  <url>\n    <loc>%s/kabar-kampus/%s</loc>\n    <lastmod>%s</lastmod>\n  </url>\n",
+			base, xmlEscape(p.Slug), lastmod.UTC().Format("2006-01-02"))
+	}
+	b.WriteString("</urlset>")
+	return []byte(b.String()), nil
+}
+
+// RSSFeed — RSS 2.0 kabar kampus (20 tayang terbaru).
+func (s *ContentService) RSSFeed() ([]byte, error) {
+	now := time.Now()
+	var rows []entity.Post
+	err := s.db.Model(&entity.Post{}).
+		Where("status = ? AND (publish_at IS NULL OR publish_at <= ?) AND (unpublish_at IS NULL OR unpublish_at > ?)",
+			entity.StatusPublished, now, now).
+		Order("publish_at DESC").Limit(20).Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	base := publicBaseURL()
+	var b strings.Builder
+	b.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+	b.WriteString("<rss version=\"2.0\"><channel>\n")
+	fmt.Fprintf(&b, "  <title>Kabar Kampus Universitas Binawan</title>\n  <link>%s/kabar-kampus</link>\n  <description>Berita dan kabar terbaru Universitas Binawan</description>\n", base)
+	fmt.Fprintf(&b, "  <lastBuildDate>%s</lastBuildDate>\n", time.Now().UTC().Format(time.RFC1123Z))
+	for i := range rows {
+		p := &rows[i]
+		tr := entity.TrOf[entity.PostTranslation](p.Translations)["id"]
+		pub := time.Now()
+		if p.PublishAt != nil {
+			pub = *p.PublishAt
+		}
+		fmt.Fprintf(&b, "  <item>\n    <title>%s</title>\n    <link>%s/kabar-kampus/%s</link>\n    <guid>%s/kabar-kampus/%s</guid>\n    <pubDate>%s</pubDate>\n    <description>%s</description>\n  </item>\n",
+			xmlEscape(tr.Title), base, xmlEscape(p.Slug), base, xmlEscape(p.Slug),
+			pub.UTC().Format(time.RFC1123Z), xmlEscape(tr.Excerpt))
+	}
+	b.WriteString("</channel></rss>")
+	return []byte(b.String()), nil
 }

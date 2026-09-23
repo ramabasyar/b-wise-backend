@@ -156,3 +156,23 @@ func (h *PublicHandler) RelatedPosts(c *gin.Context) {
 		return gin.H{"items": items}, nil
 	})
 }
+
+// Sitemap — sitemap.xml konten tayang.
+func (h *PublicHandler) Sitemap(c *gin.Context) {
+	data, err := h.svc.SitemapXML()
+	if err != nil {
+		c.String(http.StatusInternalServerError, "sitemap error")
+		return
+	}
+	c.Data(http.StatusOK, "application/xml; charset=utf-8", data)
+}
+
+// Feed — RSS 2.0 kabar kampus.
+func (h *PublicHandler) Feed(c *gin.Context) {
+	data, err := h.svc.RSSFeed()
+	if err != nil {
+		c.String(http.StatusInternalServerError, "feed error")
+		return
+	}
+	c.Data(http.StatusOK, "application/rss+xml; charset=utf-8", data)
+}
