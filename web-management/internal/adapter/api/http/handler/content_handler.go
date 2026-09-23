@@ -553,3 +553,62 @@ func (h *ContentHandler) ExportJSON(c *gin.Context) {
 	c.Header("Content-Disposition", "attachment; filename=bwm-export.json")
 	c.JSON(http.StatusOK, out)
 }
+
+// ==================== F2: REDIRECT MANAGER ====================
+
+func (h *ContentHandler) ListRedirects(c *gin.Context) {
+	rows, err := h.svc.ListRedirects(c.Query("active") == "true")
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": rows})
+}
+
+func (h *ContentHandler) CreateRedirect(c *gin.Context) {
+	var in struct {
+		FromPath   string `json:"from_path"`
+		ToPath     string `json:"to_path"`
+		StatusCode int    `json:"status_code"`
+		Note       string `json:"note"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		return
+	}
+	r, err := h.svc.CreateRedirect(in.FromPath, in.ToPath, in.StatusCode, in.Note, actorOf(c))
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	h.svc.FlushPublicCache()
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": r})
+}
+
+func (h *ContentHandler) UpdateRedirect(c *gin.Context) {
+	var in struct {
+		ToPath     string `json:"to_path"`
+		StatusCode int    `json:"status_code"`
+		Active     bool   `json:"active"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		return
+	}
+	r, err := h.svc.UpdateRedirect(c.Param("id"), in.ToPath, in.StatusCode, in.Active)
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	h.svc.FlushPublicCache()
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": r})
+}
+
+func (h *ContentHandler) DeleteRedirect(c *gin.Context) {
+	if err := h.svc.DeleteRedirect(c.Param("id")); err != nil {
+		errJSON(c, err)
+		return
+	}
+	h.svc.FlushPublicCache()
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}

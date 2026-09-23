@@ -42,6 +42,11 @@ menu:
         icon: CalendarDays
         required_permission: contents.read
         sort_order: 3
+      - label: Redirect URL
+        path: /dashboard/web-management/redirects
+        icon: Link2
+        required_permission: settings.read
+        sort_order: 7
       - label: Halaman Statis
         path: /dashboard/web-management/pages
         icon: FileText

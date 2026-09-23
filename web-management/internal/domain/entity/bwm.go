@@ -415,3 +415,16 @@ type PostTerm struct {
 }
 
 func (PostTerm) TableName() string { return "post_terms" }
+
+// Redirect — pemetaan URL lama -> baru (F2 SEO suite: 301/302 + auto saat slug berubah).
+type Redirect struct {
+	Base
+	FromPath   string `json:"from_path" gorm:"type:varchar(300);uniqueIndex;not null"` // "/artikel/judul-lama"
+	ToPath     string `json:"to_path" gorm:"type:varchar(300);not null"`               // "/kabar-kampus/judul-baru"
+	StatusCode int    `json:"status_code" gorm:"default:301"`                          // 301|302
+	Active     bool   `json:"active" gorm:"default:true;index"`
+	Note       string `json:"note" gorm:"type:varchar(200)"`
+	CreatedBy  string `json:"created_by" gorm:"type:varchar(36)"`
+}
+
+func (Redirect) TableName() string { return "redirects" }

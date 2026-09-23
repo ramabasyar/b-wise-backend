@@ -177,3 +177,15 @@ func (h *PublicHandler) Feed(c *gin.Context) {
 	}
 	c.Data(http.StatusOK, "application/rss+xml; charset=utf-8", data)
 }
+
+// RedirectLookup — GET /api/v1/public/redirects?path=/x — tujuan pemetaan utk web.
+func (h *PublicHandler) RedirectLookup(c *gin.Context) {
+	path := c.Query("path")
+	h.serve(c, func() (any, error) {
+		r, err := h.svc.LookupRedirect(path)
+		if err != nil {
+			return nil, err
+		}
+		return gin.H{"from_path": r.FromPath, "to_path": r.ToPath, "status_code": r.StatusCode}, nil
+	})
+}

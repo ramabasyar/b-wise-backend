@@ -125,6 +125,7 @@ func SetupWithLogger(
 		pub.GET("/terms", h.Public.Terms)
 		pub.GET("/sitemap.xml", h.Public.Sitemap)
 		pub.GET("/feed.xml", h.Public.Feed)
+		pub.GET("/redirects", h.Public.RedirectLookup)
 		pub.GET("/posts/:slug", h.Public.PostBySlug)
 		pub.GET("/banners", h.Public.Banners)
 		pub.GET("/events", h.Public.Events)
@@ -135,6 +136,15 @@ func SetupWithLogger(
 	// ===== BWM: ADMIN (auth JWKS + permission contents.*) =====
 	if h.Content != nil {
 		api.GET("/export", permCheck.RequirePermission("contents.read"), h.Content.ExportJSON)
+
+		redirects := api.Group("/redirects")
+		redirects.Use(jwksAuth.RequireAuth(), permCheck.CheckAccess())
+		{
+			redirects.GET("", permCheck.RequirePermission("settings.read"), h.Content.ListRedirects)
+			redirects.POST("", permCheck.RequirePermission("settings.write"), h.Content.CreateRedirect)
+			redirects.PUT("/:id", permCheck.RequirePermission("settings.write"), h.Content.UpdateRedirect)
+			redirects.DELETE("/:id", permCheck.RequirePermission("settings.write"), h.Content.DeleteRedirect)
+		}
 
 		terms := api.Group("/terms")
 		terms.Use(jwksAuth.RequireAuth(), permCheck.CheckAccess())

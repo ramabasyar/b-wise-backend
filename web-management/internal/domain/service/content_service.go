@@ -270,6 +270,7 @@ func (s *ContentService) UpdatePost(id string, in PostInput, actor string) (*ent
 	if err := validatePostTr(in.Translations); err != nil {
 		return nil, err
 	}
+	oldSlug := p.Slug
 	if in.Slug != "" && Slugify(in.Slug) != p.Slug {
 		p.Slug = s.uniqueSlug(in.Slug, "posts")
 	}
@@ -295,6 +296,9 @@ func (s *ContentService) UpdatePost(id string, in PostInput, actor string) (*ent
 		return s.saveVersion(tx, "post", p.ID, p.Version, postSnapshotOf(p), actor)
 	}); err != nil {
 		return nil, err
+	}
+	if p.Slug != oldSlug {
+		s.ensurePostRedirect(oldSlug, p.Slug, actor)
 	}
 	s.FlushPublicCache()
 	return p, nil
@@ -1303,4 +1307,83 @@ func (s *ContentService) ExportAll() (map[string]any, error) {
 			"media": media, "documents": documents,
 		},
 	}, nil
+}
+
+// ==================== F2: REDIRECT MANAGER ====================
+
+// ListRedirects — daftar semua pemetaan (opsional filter aktif).
+func (s *ContentService) ListRedirects(activeOnly bool) ([]entity.Redirect, error) {
+	q := s.db.Model(&entity.Redirect{})
+	if activeOnly {
+		q = q.Where("active = ?", true)
+	}
+	var rows []entity.Redirect
+	err := q.Order("created_at DESC").Find(&rows).Error
+	return rows, err
+}
+
+// CreateRedirect — tambah pemetaan (from_path dinormalkan: harus diawali "/").
+func (s *ContentService) CreateRedirect(fromPath, toPath string, statusCode int, note, actor string) (*entity.Redirect, error) {
+	if !strings.HasPrefix(fromPath, "/") || !strings.HasPrefix(toPath, "/") {
+		return nil, fmt.Errorf("from/to path harus diawali \"/\": %w", ErrInvalid)
+	}
+	if statusCode != 301 && statusCode != 302 {
+		statusCode = 301
+	}
+	r := &entity.Redirect{
+		FromPath: strings.TrimSpace(fromPath), ToPath: strings.TrimSpace(toPath),
+		StatusCode: statusCode, Active: true, Note: note, CreatedBy: actor,
+	}
+	if err := s.db.Create(r).Error; err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+// UpdateRedirect — ubah target/status/aktif.
+func (s *ContentService) UpdateRedirect(id, toPath string, statusCode int, active bool) (*entity.Redirect, error) {
+	var r entity.Redirect
+	if err := s.db.First(&r, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	if strings.HasPrefix(toPath, "/") {
+		r.ToPath = strings.TrimSpace(toPath)
+	}
+	if statusCode == 301 || statusCode == 302 {
+		r.StatusCode = statusCode
+	}
+	r.Active = active
+	if err := s.db.Save(&r).Error; err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// DeleteRedirect — hapus pemetaan.
+func (s *ContentService) DeleteRedirect(id string) error {
+	return s.db.Delete(&entity.Redirect{}, "id = ?", id).Error
+}
+
+// LookupRedirect — cari tujuan utk path (publik; hanya yang aktif).
+func (s *ContentService) LookupRedirect(fromPath string) (*entity.Redirect, error) {
+	var r entity.Redirect
+	err := s.db.Where("from_path = ? AND active = ?", strings.TrimSpace(fromPath), true).First(&r).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// ensurePostRedirect — saat slug post berubah: otomatis pasang redirect 301
+// dari path lama ke baru (dipanggil UpdatePost).
+func (s *ContentService) ensurePostRedirect(oldSlug, newSlug string, actor string) {
+	if oldSlug == "" || oldSlug == newSlug {
+		return
+	}
+	from := "/kabar-kampus/" + oldSlug
+	to := "/kabar-kampus/" + newSlug
+	_, _ = s.CreateRedirect(from, to, 301, "otomatis: slug berubah", actor)
 }
