@@ -1250,3 +1250,53 @@ func (s *ContentService) RSSFeed() ([]byte, error) {
 	b.WriteString("</channel></rss>")
 	return []byte(b.String()), nil
 }
+
+// ==================== F2: EXPORT JSON PENUH (asuransi data) ====================
+
+// ExportAll — snapshot seluruh konten CMS sbg map siap-JSON.
+// Versioning internal (content_versions) tidak disertakan — hanya data inti.
+func (s *ContentService) ExportAll() (map[string]any, error) {
+	var posts []entity.Post
+	if err := s.db.Order("updated_at DESC").Find(&posts).Error; err != nil {
+		return nil, err
+	}
+	s.tax.PopulateTerms(posts)
+
+	var pages []entity.Page
+	if err := s.db.Order("updated_at DESC").Find(&pages).Error; err != nil {
+		return nil, err
+	}
+	var events []entity.Event
+	if err := s.db.Order("event_date DESC").Find(&events).Error; err != nil {
+		return nil, err
+	}
+	var banners []entity.Banner
+	if err := s.db.Order("sort_order").Find(&banners).Error; err != nil {
+		return nil, err
+	}
+	var terms []entity.Term
+	if err := s.db.Order("taxonomy, slug").Find(&terms).Error; err != nil {
+		return nil, err
+	}
+	var postTerms []entity.PostTerm
+	if err := s.db.Find(&postTerms).Error; err != nil {
+		return nil, err
+	}
+	var media []entity.MediaAsset
+	if err := s.db.Order("created_at DESC").Find(&media).Error; err != nil {
+		return nil, err
+	}
+	var documents []entity.Document
+	if err := s.db.Order("created_at DESC").Find(&documents).Error; err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"exported_at": time.Now().UTC().Format(time.RFC3339),
+		"format":      "bwm-export/1",
+		"data": map[string]any{
+			"posts": posts, "pages": pages, "events": events, "banners": banners,
+			"terms": terms, "post_terms": postTerms,
+			"media": media, "documents": documents,
+		},
+	}, nil
+}

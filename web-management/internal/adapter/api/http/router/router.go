@@ -134,6 +134,8 @@ func SetupWithLogger(
 
 	// ===== BWM: ADMIN (auth JWKS + permission contents.*) =====
 	if h.Content != nil {
+		api.GET("/export", permCheck.RequirePermission("contents.read"), h.Content.ExportJSON)
+
 		terms := api.Group("/terms")
 		terms.Use(jwksAuth.RequireAuth(), permCheck.CheckAccess())
 		{

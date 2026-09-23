@@ -540,3 +540,16 @@ func (h *ContentHandler) SetPostTerms(c *gin.Context) {
 	h.svc.FlushPublicCache()
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
+
+// ==================== F2: EXPORT JSON ====================
+
+// ExportJSON — unduh seluruh konten sbg JSON (asuransi kepemilikan data).
+func (h *ContentHandler) ExportJSON(c *gin.Context) {
+	out, err := h.svc.ExportAll()
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.Header("Content-Disposition", "attachment; filename=bwm-export.json")
+	c.JSON(http.StatusOK, out)
+}
