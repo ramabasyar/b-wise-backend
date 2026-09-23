@@ -756,13 +756,17 @@ func (s *ContentService) publicPostOf(p *entity.Post, locale string, withBlocks 
 	return out
 }
 
-func (s *ContentService) PublicPosts(locale, typ, term string, page, per int) ([]PublicPost, int64, error) {
+func (s *ContentService) PublicPosts(locale, typ, term, q string, page, per int) ([]PublicPost, int64, error) {
 	now := time.Now()
 	tx := s.db.Model(&entity.Post{}).
 		Where("status = ? AND (publish_at IS NULL OR publish_at <= ?) AND (unpublish_at IS NULL OR unpublish_at > ?)",
 			entity.StatusPublished, now, now)
 	if typ != "" {
 		tx = tx.Where("type = ?", typ)
+	}
+	if q != "" {
+		like := "%" + strings.ToLower(q) + "%"
+		tx = tx.Where("lower(translations::text) LIKE ?", like)
 	}
 	if term != "" {
 		ids, err := s.tax.TermPostIDs("", term)

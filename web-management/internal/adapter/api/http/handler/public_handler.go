@@ -78,8 +78,9 @@ func (h *PublicHandler) Posts(c *gin.Context) {
 	typ := c.Query("type")
 	locale := c.Query("locale")
 	term := c.Query("term")
+	q := c.Query("q")
 	h.serve(c, func() (any, error) {
-		items, total, err := h.svc.PublicPosts(locale, typ, term, page, per)
+		items, total, err := h.svc.PublicPosts(locale, typ, term, q, page, per)
 		if err != nil {
 			return nil, err
 		}
