@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm/clause"
 	"gorm.io/gorm"
 
 	"github.com/rama/b-wise/web-management/internal/domain/blocks"
@@ -239,7 +240,12 @@ func (s *ContentService) CreatePost(in PostInput, actor string) (*entity.Post, e
 	} else {
 		p.Slug = s.uniqueSlug(in.Translations["id"].Title, "posts")
 	}
-	if err := s.db.Create(p).Error; err != nil {
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(p).Error; err != nil {
+			return err
+		}
+		return s.saveVersion(tx, "post", p.ID, p.Version, postSnapshotOf(p), actor)
+	}); err != nil {
 		return nil, err
 	}
 	return p, nil
@@ -271,7 +277,12 @@ func (s *ContentService) UpdatePost(id string, in PostInput, actor string) (*ent
 	for loc, t := range in.Translations {
 		p.SetTr(loc, entity.PostTranslation(t))
 	}
-	if err := s.db.Save(p).Error; err != nil {
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(p).Error; err != nil {
+			return err
+		}
+		return s.saveVersion(tx, "post", p.ID, p.Version, postSnapshotOf(p), actor)
+	}); err != nil {
 		return nil, err
 	}
 	s.FlushPublicCache()
@@ -909,4 +920,129 @@ func indonesianMonth(m time.Month) string {
 		time.October: "Oktober", time.November: "November", time.December: "Desember",
 	}
 	return names[m]
+}
+
+// ==================== F2: VERSIONING + ROLLBACK (Post) ====================
+
+// PostSnapshot — kondisi konten Post pada satu versi (field yang diedit editor).
+type PostSnapshot struct {
+	Slug          string                              `json:"slug"`
+	Type          string                              `json:"type"`
+	Featured      bool                                `json:"featured"`
+	HeroURL       string                              `json:"hero_url"`
+	HeroMediaID   *string                             `json:"hero_media_id"`
+	PublishAt     *time.Time                          `json:"publish_at"`
+	UnpublishAt   *time.Time                          `json:"unpublish_at"`
+	Translations  map[string]entity.PostTranslation   `json:"translations"`
+	SEO           entity.SEO                          `json:"seo"`
+}
+
+func postSnapshotOf(p *entity.Post) PostSnapshot {
+	return PostSnapshot{
+		Slug: p.Slug, Type: p.Type, Featured: p.Featured,
+		HeroURL: p.HeroURL, HeroMediaID: p.HeroMediaID,
+		PublishAt: p.PublishAt, UnpublishAt: p.UnpublishAt,
+		Translations: entity.TrOf[entity.PostTranslation](p.Translations),
+		SEO:          entity.SEOOf(p.SEO),
+	}
+}
+
+// saveVersion — simpan snapshot versi (idempotent, dalam transaksi caller).
+func (s *ContentService) saveVersion(tx *gorm.DB, entityType, entityID string, version int, snap any, actor string) error {
+	b, err := json.Marshal(snap)
+	if err != nil {
+		return err
+	}
+	cv := &entity.ContentVersion{
+		EntityType: entityType, EntityID: entityID, Version: version,
+		Snapshot: string(b), Actor: actor,
+	}
+	return tx.Clauses(clause.OnConflict{DoNothing: true}).Create(cv).Error
+}
+
+// VersionSummary — item riwayat versi utk UI.
+type VersionSummary struct {
+	Version     int       `json:"version"`
+	Actor       string    `json:"actor"`
+	CreatedAt   time.Time `json:"created_at"`
+	Title       string    `json:"title"`
+	IsPublished bool      `json:"is_published"`
+}
+
+func (s *ContentService) ListPostVersions(id string) ([]VersionSummary, error) {
+	var p entity.Post
+	if err := s.db.Select("id, published_version").First(&p, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	var rows []entity.ContentVersion
+	if err := s.db.Where("entity_type = ? AND entity_id = ?", "post", id).Order("version DESC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]VersionSummary, 0, len(rows))
+	for _, cv := range rows {
+		vs := VersionSummary{Version: cv.Version, Actor: cv.Actor, CreatedAt: cv.CreatedAt, IsPublished: cv.Version == p.PublishedVersion}
+		var snap PostSnapshot
+		if json.Unmarshal([]byte(cv.Snapshot), &snap) == nil && snap.Translations != nil {
+			vs.Title = snap.Translations["id"].Title
+		}
+		out = append(out, vs)
+	}
+	return out, nil
+}
+
+func (s *ContentService) GetPostVersion(id string, version int) (*PostSnapshot, error) {
+	var cv entity.ContentVersion
+	if err := s.db.Where("entity_type = ? AND entity_id = ? AND version = ?", "post", id, version).First(&cv).Error; err != nil {
+		return nil, err
+	}
+	var snap PostSnapshot
+	if err := json.Unmarshal([]byte(cv.Snapshot), &snap); err != nil {
+		return nil, err
+	}
+	return &snap, nil
+}
+
+// RollbackPost — pulihkan konten dari snapshot versi target (status TIDAK diubah;
+// hasil rollback disimpan sebagai versi baru agar riwayat tetap utuh).
+func (s *ContentService) RollbackPost(id string, targetVersion int, actor string) (*entity.Post, error) {
+	var cv entity.ContentVersion
+	if err := s.db.Where("entity_type = ? AND entity_id = ? AND version = ?", "post", id, targetVersion).First(&cv).Error; err != nil {
+		return nil, err
+	}
+	var snap PostSnapshot
+	if err := json.Unmarshal([]byte(cv.Snapshot), &snap); err != nil {
+		return nil, err
+	}
+	p, err := s.GetPost(id)
+	if err != nil {
+		return nil, err
+	}
+	if snap.Slug != "" && snap.Slug != p.Slug {
+		p.Slug = s.uniqueSlug(snap.Slug, "posts")
+	}
+	if snap.Type != "" {
+		p.Type = snap.Type
+	}
+	p.Featured = snap.Featured
+	p.HeroURL = snap.HeroURL
+	p.HeroMediaID = snap.HeroMediaID
+	p.PublishAt = snap.PublishAt
+	p.UnpublishAt = snap.UnpublishAt
+	p.SEO = marshalSEO(snap.SEO)
+	p.Version++
+	p.UpdatedBy = actor
+	p.Translations = "{}"
+	for loc, t := range snap.Translations {
+		p.SetTr(loc, t)
+	}
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(p).Error; err != nil {
+			return err
+		}
+		return s.saveVersion(tx, "post", p.ID, p.Version, postSnapshotOf(p), actor)
+	}); err != nil {
+		return nil, err
+	}
+	s.FlushPublicCache()
+	return p, nil
 }

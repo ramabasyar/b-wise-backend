@@ -74,7 +74,7 @@ func main() {
 			// Auto-migrate entitas BWM
 			err = database.AutoMigrate(db,
 				&entity.Post{}, &entity.Page{}, &entity.Event{},
-				&entity.Banner{}, &entity.MediaAsset{}, &entity.Document{},
+				&entity.Banner{}, &entity.MediaAsset{}, &entity.Document{}, &entity.ContentVersion{},
 			)
 			if err != nil {
 				zapLogger.Info(fmt.Sprintf("[startup] auto-migrate error: %v", err))

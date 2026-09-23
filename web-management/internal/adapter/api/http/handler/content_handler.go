@@ -372,3 +372,42 @@ func (h *ContentHandler) DeleteDocument(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
+
+// ==================== F2: VERSIONING + ROLLBACK ====================
+
+func (h *ContentHandler) PostVersions(c *gin.Context) {
+	rows, err := h.svc.ListPostVersions(c.Param("id"))
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": rows})
+}
+
+func (h *ContentHandler) PostVersionDetail(c *gin.Context) {
+	v, err := strconv.Atoi(c.Param("v"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "versi tidak valid"}})
+		return
+	}
+	snap, err := h.svc.GetPostVersion(c.Param("id"), v)
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": snap})
+}
+
+func (h *ContentHandler) PostRollback(c *gin.Context) {
+	v, err := strconv.Atoi(c.Param("v"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "versi tidak valid"}})
+		return
+	}
+	p, err := h.svc.RollbackPost(c.Param("id"), v, actorOf(c))
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": p})
+}

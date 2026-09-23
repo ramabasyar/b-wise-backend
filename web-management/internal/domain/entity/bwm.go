@@ -374,3 +374,15 @@ type Document struct {
 }
 
 func (Document) TableName() string { return "documents" }
+
+// ContentVersion — snapshot konten tiap simpan (F2: versioning + rollback).
+type ContentVersion struct {
+	Base
+	EntityType string `json:"entity_type" gorm:"type:varchar(20);uniqueIndex:idx_cv;index:idx_cv_entity,priority:1"`
+	EntityID   string `json:"entity_id" gorm:"type:varchar(36);uniqueIndex:idx_cv;index:idx_cv_entity,priority:2"`
+	Version    int    `json:"version" gorm:"uniqueIndex:idx_cv"`
+	Snapshot   string `json:"snapshot" gorm:"type:jsonb"`
+	Actor      string `json:"actor" gorm:"type:varchar(36)"`
+}
+
+func (ContentVersion) TableName() string { return "content_versions" }

@@ -140,6 +140,9 @@ func SetupWithLogger(
 			posts.DELETE("/:id", permCheck.RequirePermission("contents.write"), h.Content.DeletePost)
 			posts.POST("/:id/publish", permCheck.RequirePermission("contents.write"), h.Content.PublishPost)
 			posts.POST("/:id/archive", permCheck.RequirePermission("contents.write"), h.Content.ArchivePost)
+			posts.GET("/:id/versions", permCheck.RequirePermission("contents.read"), h.Content.PostVersions)
+			posts.GET("/:id/versions/:v", permCheck.RequirePermission("contents.read"), h.Content.PostVersionDetail)
+			posts.POST("/:id/rollback/:v", permCheck.RequirePermission("contents.write"), h.Content.PostRollback)
 		}
 
 		events := api.Group("/events")
