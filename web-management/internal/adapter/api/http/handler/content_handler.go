@@ -411,3 +411,39 @@ func (h *ContentHandler) PostRollback(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": p})
 }
+
+// ==================== F2: EDIT LOCKING ====================
+
+func (h *ContentHandler) PostLockStatus(c *gin.Context) {
+	st, err := h.svc.GetPostLock(c.Param("id"))
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": st})
+}
+
+func (h *ContentHandler) PostLockAcquire(c *gin.Context) {
+	var req struct {
+		Force bool `json:"force"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	st, ok, err := h.svc.AcquirePostLock(c.Param("id"), actorOf(c), req.Force)
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"lock": st, "acquired": ok}})
+}
+
+func (h *ContentHandler) PostLockRelease(c *gin.Context) {
+	var req struct {
+		Force bool `json:"force"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	if err := h.svc.ReleasePostLock(c.Param("id"), actorOf(c), req.Force); err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}

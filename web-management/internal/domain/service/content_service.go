@@ -177,7 +177,7 @@ func (s *ContentService) ListPosts(status, typ, q string, page, per int) ([]enti
 	}
 	if q != "" {
 		like := "%" + strings.ToLower(q) + "%"
-		tx = tx.Where("lower(translations) LIKE ?", like)
+		tx = tx.Where("lower(translations::text) LIKE ?", like)
 	}
 	var total int64
 	if err := tx.Count(&total).Error; err != nil {
@@ -1045,4 +1045,74 @@ func (s *ContentService) RollbackPost(id string, targetVersion int, actor string
 	}
 	s.FlushPublicCache()
 	return p, nil
+}
+
+// ==================== F2: EDIT LOCKING (Redis, TTL 10 mnt) ====================
+
+type LockStatus struct {
+	Locked    bool      `json:"locked"`
+	Holder    string    `json:"holder,omitempty"`
+	ExpiresAt time.Time `json:"expires_at,omitempty"`
+}
+
+func lockKey(entityType, id string) string { return "bwm:lock:" + entityType + ":" + id }
+
+// AcquirePostLock — klaim lock edit; holder sama = refresh TTL (heartbeat).
+func (s *ContentService) AcquirePostLock(id, actor string, force bool) (LockStatus, bool, error) {
+	if s.redis == nil {
+		return LockStatus{}, true, nil // tanpa Redis: locking nonaktif, izinkan edit
+	}
+	ctx := context.Background()
+	key := lockKey("post", id)
+	ttl := 10 * time.Minute
+	if force {
+		if err := s.redis.Set(ctx, key, actor, ttl).Err(); err != nil {
+			return LockStatus{}, false, err
+		}
+		return LockStatus{Locked: true, Holder: actor, ExpiresAt: time.Now().Add(ttl)}, true, nil
+	}
+	ok, err := s.redis.SetNX(ctx, key, actor, ttl).Result()
+	if err != nil {
+		return LockStatus{}, false, err
+	}
+	if ok {
+		return LockStatus{Locked: true, Holder: actor, ExpiresAt: time.Now().Add(ttl)}, true, nil
+	}
+	holder, _ := s.redis.Get(ctx, key).Result()
+	if holder == actor {
+		_ = s.redis.Expire(ctx, key, ttl).Err()
+		return LockStatus{Locked: true, Holder: actor, ExpiresAt: time.Now().Add(ttl)}, true, nil
+	}
+	return LockStatus{Locked: true, Holder: holder}, false, nil
+}
+
+// ReleasePostLock — lepaskan (hanya holder, atau force).
+func (s *ContentService) ReleasePostLock(id, actor string, force bool) error {
+	if s.redis == nil {
+		return nil
+	}
+	ctx := context.Background()
+	key := lockKey("post", id)
+	holder, _ := s.redis.Get(ctx, key).Result()
+	if force || holder == actor || holder == "" {
+		return s.redis.Del(ctx, key).Err()
+	}
+	return errors.New("lock sedang dipegang editor lain")
+}
+
+// GetPostLock — status lock saat ini.
+func (s *ContentService) GetPostLock(id string) (LockStatus, error) {
+	if s.redis == nil {
+		return LockStatus{}, nil
+	}
+	ctx := context.Background()
+	holder, err := s.redis.Get(ctx, lockKey("post", id)).Result()
+	if err == redis.Nil {
+		return LockStatus{}, nil
+	}
+	if err != nil {
+		return LockStatus{}, err
+	}
+	ttl, _ := s.redis.TTL(ctx, lockKey("post", id)).Result()
+	return LockStatus{Locked: true, Holder: holder, ExpiresAt: time.Now().Add(ttl)}, nil
 }

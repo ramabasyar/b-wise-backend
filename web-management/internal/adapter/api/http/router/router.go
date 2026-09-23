@@ -143,6 +143,9 @@ func SetupWithLogger(
 			posts.GET("/:id/versions", permCheck.RequirePermission("contents.read"), h.Content.PostVersions)
 			posts.GET("/:id/versions/:v", permCheck.RequirePermission("contents.read"), h.Content.PostVersionDetail)
 			posts.POST("/:id/rollback/:v", permCheck.RequirePermission("contents.write"), h.Content.PostRollback)
+			posts.GET("/:id/lock", permCheck.RequirePermission("contents.read"), h.Content.PostLockStatus)
+			posts.POST("/:id/lock", permCheck.RequirePermission("contents.write"), h.Content.PostLockAcquire)
+			posts.DELETE("/:id/lock", permCheck.RequirePermission("contents.write"), h.Content.PostLockRelease)
 		}
 
 		events := api.Group("/events")
