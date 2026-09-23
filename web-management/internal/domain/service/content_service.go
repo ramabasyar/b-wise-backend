@@ -22,12 +22,16 @@ import (
 type ContentService struct {
 	db        *gorm.DB
 	redis     *redis.Client
+	tax       *TaxonomyService
 	webhooks  []string
 }
 
 func NewContentService(db *gorm.DB, r *redis.Client) *ContentService {
-	return &ContentService{db: db, redis: r}
+	return &ContentService{db: db, redis: r, tax: NewTaxonomyService(db)}
 }
+
+// Tax — akses layanan taksonomi (kategori & tag).
+func (s *ContentService) Tax() *TaxonomyService { return s.tax }
 
 // WithWebhooks — daftar URL yang dikabari saat publish/archive (chainable).
 func (s *ContentService) WithWebhooks(urls []string) *ContentService {
@@ -191,6 +195,9 @@ func (s *ContentService) ListPosts(status, typ, q string, page, per int) ([]enti
 	}
 	var rows []entity.Post
 	err := tx.Order("updated_at DESC").Limit(per).Offset((page - 1) * per).Find(&rows).Error
+	if err == nil {
+		s.tax.PopulateTerms(rows)
+	}
 	return rows, total, err
 }
 
@@ -202,6 +209,7 @@ func (s *ContentService) GetPost(id string) (*entity.Post, error) {
 		}
 		return nil, err
 	}
+	s.tax.PopulateTermsOne(&p)
 	return &p, nil
 }
 
@@ -745,13 +753,23 @@ func (s *ContentService) publicPostOf(p *entity.Post, locale string, withBlocks 
 	return out
 }
 
-func (s *ContentService) PublicPosts(locale, typ string, page, per int) ([]PublicPost, int64, error) {
+func (s *ContentService) PublicPosts(locale, typ, term string, page, per int) ([]PublicPost, int64, error) {
 	now := time.Now()
 	tx := s.db.Model(&entity.Post{}).
 		Where("status = ? AND (publish_at IS NULL OR publish_at <= ?) AND (unpublish_at IS NULL OR unpublish_at > ?)",
 			entity.StatusPublished, now, now)
 	if typ != "" {
 		tx = tx.Where("type = ?", typ)
+	}
+	if term != "" {
+		ids, err := s.tax.TermPostIDs("", term)
+		if err != nil {
+			return nil, 0, err
+		}
+		if len(ids) == 0 {
+			return []PublicPost{}, 0, nil
+		}
+		tx = tx.Where("id IN ?", ids)
 	}
 	var total int64
 	if err := tx.Count(&total).Error; err != nil {
@@ -1115,4 +1133,41 @@ func (s *ContentService) GetPostLock(id string) (LockStatus, error) {
 	}
 	ttl, _ := s.redis.TTL(ctx, lockKey("post", id)).Result()
 	return LockStatus{Locked: true, Holder: holder, ExpiresAt: time.Now().Add(ttl)}, nil
+}
+
+// ==================== F2: TAKSONOMI (publik) ====================
+
+// PublicTerms — daftar term utk web (kategori/tag + jumlah konten).
+func (s *ContentService) PublicTerms(taxonomy string) ([]TermWithCount, error) {
+	return s.tax.ListTerms(taxonomy)
+}
+
+// PublicRelatedPosts — konten terkait (overlap term terbanyak, hanya tayang).
+func (s *ContentService) PublicRelatedPosts(slug, locale string, limit int) ([]PublicPost, error) {
+	var p entity.Post
+	if err := s.db.Select("id, slug").First(&p, "slug = ?", slug).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	ids, err := s.tax.RelatedPostIDs(p.ID, limit*3)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return []PublicPost{}, nil
+	}
+	now := time.Now()
+	var rows []entity.Post
+	if err := s.db.Where("id IN ? AND status = ? AND (publish_at IS NULL OR publish_at <= ?) AND (unpublish_at IS NULL OR unpublish_at > ?)",
+		ids, entity.StatusPublished, now, now).
+		Order("publish_at DESC").Limit(limit).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]PublicPost, 0, len(rows))
+	for i := range rows {
+		out = append(out, s.publicPostOf(&rows[i], locale, false))
+	}
+	return out, nil
 }

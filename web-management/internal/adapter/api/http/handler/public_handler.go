@@ -77,8 +77,9 @@ func (h *PublicHandler) Posts(c *gin.Context) {
 	page, per := pageParams(c)
 	typ := c.Query("type")
 	locale := c.Query("locale")
+	term := c.Query("term")
 	h.serve(c, func() (any, error) {
-		items, total, err := h.svc.PublicPosts(locale, typ, page, per)
+		items, total, err := h.svc.PublicPosts(locale, typ, term, page, per)
 		if err != nil {
 			return nil, err
 		}
@@ -132,5 +133,26 @@ func (h *PublicHandler) Documents(c *gin.Context) {
 			return nil, err
 		}
 		return gin.H{"items": items, "total": len(items)}, nil
+	})
+}
+
+// Terms — daftar kategori/tag (publik, + jumlah konten).
+func (h *PublicHandler) Terms(c *gin.Context) {
+	taxonomy := c.Query("taxonomy")
+	h.serve(c, func() (any, error) {
+		return h.svc.PublicTerms(taxonomy)
+	})
+}
+
+// RelatedPosts — konten terkait berdasarkan overlap taksonomi.
+func (h *PublicHandler) RelatedPosts(c *gin.Context) {
+	slug := c.Param("slug")
+	locale := c.Query("locale")
+	h.serve(c, func() (any, error) {
+		items, err := h.svc.PublicRelatedPosts(slug, locale, 3)
+		if err != nil {
+			return nil, err
+		}
+		return gin.H{"items": items}, nil
 	})
 }

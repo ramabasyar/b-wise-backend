@@ -139,6 +139,7 @@ type Post struct {
 	PublishedVersion int        `json:"published_version" gorm:"default:0"`
 	CreatedBy        string     `json:"created_by" gorm:"type:varchar(36)"`
 	UpdatedBy        string     `json:"updated_by" gorm:"type:varchar(36)"`
+	Terms            []TermBrief `json:"terms,omitempty" gorm:"-"` // diisi service (join post_terms)
 }
 
 func (Post) TableName() string { return "posts" }
@@ -386,3 +387,31 @@ type ContentVersion struct {
 }
 
 func (ContentVersion) TableName() string { return "content_versions" }
+
+// Term — taksonomi lintas konten (F3: kategori & tag).
+type Term struct {
+	Base
+	Taxonomy string `json:"taxonomy" gorm:"type:varchar(20);uniqueIndex:idx_term_slug;index:idx_term_tax"` // category|tag
+	Slug     string `json:"slug" gorm:"type:varchar(120);uniqueIndex:idx_term_slug"`
+	NameID   string `json:"name_id" gorm:"type:varchar(160)"`
+	NameEN   string `json:"name_en" gorm:"type:varchar(160)"`
+}
+
+func (Term) TableName() string { return "terms" }
+
+// TermBrief — ringkasan term utk dipakikan ke Post (tanpa timestamp).
+type TermBrief struct {
+	ID       string `json:"id"`
+	Taxonomy string `json:"taxonomy"`
+	Slug     string `json:"slug"`
+	NameID   string `json:"name_id"`
+	NameEN   string `json:"name_en"`
+}
+
+// PostTerm — relasi post ↔ term.
+type PostTerm struct {
+	PostID string `json:"post_id" gorm:"type:varchar(36);primaryKey"`
+	TermID string `json:"term_id" gorm:"type:varchar(36);primaryKey"`
+}
+
+func (PostTerm) TableName() string { return "post_terms" }

@@ -121,6 +121,8 @@ func SetupWithLogger(
 			c.Next()
 		})
 		pub.GET("/posts", h.Public.Posts)
+		pub.GET("/posts/:slug/related", h.Public.RelatedPosts)
+		pub.GET("/terms", h.Public.Terms)
 		pub.GET("/posts/:slug", h.Public.PostBySlug)
 		pub.GET("/banners", h.Public.Banners)
 		pub.GET("/events", h.Public.Events)
@@ -130,6 +132,16 @@ func SetupWithLogger(
 
 	// ===== BWM: ADMIN (auth JWKS + permission contents.*) =====
 	if h.Content != nil {
+		terms := api.Group("/terms")
+		terms.Use(jwksAuth.RequireAuth(), permCheck.CheckAccess())
+		{
+			terms.GET("", permCheck.RequirePermission("contents.read"), h.Content.ListTerms)
+			terms.POST("", permCheck.RequirePermission("contents.write"), h.Content.CreateTerm)
+			terms.POST("/find-or-create", permCheck.RequirePermission("contents.write"), h.Content.FindOrCreateTerm)
+			terms.PUT("/:id", permCheck.RequirePermission("contents.write"), h.Content.UpdateTerm)
+			terms.DELETE("/:id", permCheck.RequirePermission("contents.write"), h.Content.DeleteTerm)
+		}
+
 		posts := api.Group("/posts")
 		posts.Use(jwksAuth.RequireAuth(), permCheck.CheckAccess())
 		{
@@ -146,6 +158,7 @@ func SetupWithLogger(
 			posts.GET("/:id/lock", permCheck.RequirePermission("contents.read"), h.Content.PostLockStatus)
 			posts.POST("/:id/lock", permCheck.RequirePermission("contents.write"), h.Content.PostLockAcquire)
 			posts.DELETE("/:id/lock", permCheck.RequirePermission("contents.write"), h.Content.PostLockRelease)
+			posts.PUT("/:id/terms", permCheck.RequirePermission("contents.write"), h.Content.SetPostTerms)
 		}
 
 		events := api.Group("/events")

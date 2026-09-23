@@ -75,11 +75,17 @@ func main() {
 			err = database.AutoMigrate(db,
 				&entity.Post{}, &entity.Page{}, &entity.Event{},
 				&entity.Banner{}, &entity.MediaAsset{}, &entity.Document{}, &entity.ContentVersion{},
+				&entity.Term{}, &entity.PostTerm{},
 			)
 			if err != nil {
 				zapLogger.Info(fmt.Sprintf("[startup] auto-migrate error: %v", err))
 			} else {
-				zapLogger.Info("[startup] auto-migrate OK (6 entitas BWM)")
+				zapLogger.Info("[startup] auto-migrate OK")
+				if err := service.NewTaxonomyService(db).EnsureSeed(); err != nil {
+					zapLogger.Info(fmt.Sprintf("[startup] taxonomy seed error: %v", err))
+				} else {
+					zapLogger.Info("[startup] taxonomy seed OK")
+				}
 			}
 		}
 	}

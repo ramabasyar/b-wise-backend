@@ -447,3 +447,96 @@ func (h *ContentHandler) PostLockRelease(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
+
+// ==================== F2: TAKSONOMI ====================
+
+func (h *ContentHandler) ListTerms(c *gin.Context) {
+	rows, err := h.svc.Tax().ListTerms(c.Query("taxonomy"))
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": rows})
+}
+
+func (h *ContentHandler) CreateTerm(c *gin.Context) {
+	var in struct {
+		Taxonomy string `json:"taxonomy"`
+		Slug     string `json:"slug"`
+		NameID   string `json:"name_id"`
+		NameEN   string `json:"name_en"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		return
+	}
+	t, err := h.svc.Tax().CreateTerm(in.Taxonomy, in.Slug, in.NameID, in.NameEN)
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	h.svc.FlushPublicCache()
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": t})
+}
+
+func (h *ContentHandler) UpdateTerm(c *gin.Context) {
+	var in struct {
+		NameID string `json:"name_id"`
+		NameEN string `json:"name_en"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		return
+	}
+	t, err := h.svc.Tax().UpdateTerm(c.Param("id"), in.NameID, in.NameEN)
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	h.svc.FlushPublicCache()
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": t})
+}
+
+func (h *ContentHandler) DeleteTerm(c *gin.Context) {
+	if err := h.svc.Tax().DeleteTerm(c.Param("id")); err != nil {
+		errJSON(c, err)
+		return
+	}
+	h.svc.FlushPublicCache()
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// FindOrCreateTerm — untuk chips tag di editor (cari by slug, buat bila belum).
+func (h *ContentHandler) FindOrCreateTerm(c *gin.Context) {
+	var in struct {
+		Taxonomy string `json:"taxonomy"`
+		Name     string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		return
+	}
+	t, err := h.svc.Tax().FindOrCreateByName(in.Taxonomy, in.Name)
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": t})
+}
+
+// SetPostTerms — ganti seluruh term milik post {term_ids: [...]}.
+func (h *ContentHandler) SetPostTerms(c *gin.Context) {
+	var in struct {
+		TermIDs []string `json:"term_ids"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		return
+	}
+	if err := h.svc.Tax().SetPostTerms(c.Param("id"), in.TermIDs); err != nil {
+		errJSON(c, err)
+		return
+	}
+	h.svc.FlushPublicCache()
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
