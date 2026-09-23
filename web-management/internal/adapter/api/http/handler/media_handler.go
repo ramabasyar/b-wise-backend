@@ -85,3 +85,37 @@ func (h *MediaHandler) UpdateMeta(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": m})
 }
+
+// ==================== F2: MEDIA LANJUT ====================
+
+// Usage — GET /api/media/:id/usage — daftar konten yang memakai aset.
+func (h *MediaHandler) Usage(c *gin.Context) {
+	out, err := h.svc.Usage(c.Param("id"))
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": out})
+}
+
+// Replace — POST /api/media/:id/replace (multipart "file") — ganti file,
+// key/URL tetap.
+func (h *MediaHandler) Replace(c *gin.Context) {
+	fh, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "field 'file' wajib (multipart)"}})
+		return
+	}
+	f, err := fh.Open()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		return
+	}
+	defer f.Close()
+	asset, err := h.svc.Replace(c.Request.Context(), c.Param("id"), f, fh.Filename, fh.Header.Get("Content-Type"), actorOf(c))
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": asset})
+}

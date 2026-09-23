@@ -219,3 +219,108 @@ func (s *MediaService) UpdateMeta(id, alt, caption, credit string) (*entity.Medi
 	}
 	return s.Get(id)
 }
+
+// ==================== F2: MEDIA LANJUT (usage tracking + replace) ====================
+
+// Usage — di mana aset dipakai: posts (hero/blocks), banners, events.
+func (s *MediaService) Usage(id string) (map[string]any, error) {
+	var m entity.MediaAsset
+	if err := s.db.First(&m, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	like := "%" + m.URL + "%"
+	var posts []entity.Post
+	if err := s.db.Where("hero_media_id = ? OR hero_url = ? OR lower(translations::text) LIKE lower(?)", m.ID, m.URL, like).
+		Order("updated_at DESC").Limit(200).Find(&posts).Error; err != nil {
+		return nil, err
+	}
+	type postRef struct {
+		ID, Slug, Status, Title string
+	}
+	pout := make([]postRef, 0, len(posts))
+	for i := range posts {
+		tr := entity.TrOf[entity.PostTranslation](posts[i].Translations)["id"]
+		pout = append(pout, postRef{posts[i].ID, posts[i].Slug, posts[i].Status, tr.Title})
+	}
+	var banners []entity.Banner
+	if err := s.db.Where("image_media_id = ? OR image_url = ?", m.ID, m.URL).Find(&banners).Error; err != nil {
+		return nil, err
+	}
+	var events []entity.Event
+	if err := s.db.Where("hero_media_id = ? OR hero_url = ?", m.ID, m.URL).Find(&events).Error; err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"posts": pout, "banners": banners, "events": events,
+	}, nil
+}
+
+// Replace — ganti FILE aset: key & URL TIDAK berubah (semua referensi konten tetap
+// aman); varian di-regen di key yang sama (overwrite).
+func (s *MediaService) Replace(ctx context.Context, id string, r io.Reader, filename, contentType string, actor string) (*entity.MediaAsset, error) {
+	if s.mio == nil {
+		return nil, fmt.Errorf("storage MinIO belum dikonfigurasi: %w", ErrInvalid)
+	}
+	if !allowedMIMEs[contentType] {
+		return nil, fmt.Errorf("tipe %q tidak diizinkan (jpeg/png/webp/gif): %w", contentType, ErrInvalid)
+	}
+	var m entity.MediaAsset
+	if err := s.db.First(&m, "id = ?", id).Error; err != nil {
+		return nil, err
+	}
+	raw, err := io.ReadAll(io.LimitReader(r, MaxUploadBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(raw)) > MaxUploadBytes {
+		return nil, fmt.Errorf("ukuran melebihi 15MB: %w", ErrInvalid)
+	}
+	img, _, err := image.Decode(bytes.NewReader(raw))
+	if err != nil {
+		return nil, fmt.Errorf("gambar tidak bisa dibaca: %w", ErrInvalid)
+	}
+	b := img.Bounds()
+
+	// overwrite object utama — key & URL tetap
+	if err := s.mio.Put(ctx, m.FileKey, bytes.NewReader(raw), int64(len(raw)), contentType); err != nil {
+		return nil, fmt.Errorf("overwrite storage gagal: %w", err)
+	}
+
+	// regen varian di key yang sama (prefix + id dari FileKey lama)
+	prefix := filepath.Dir(m.FileKey)
+	objID := strings.TrimSuffix(filepath.Base(m.FileKey), filepath.Ext(m.FileKey))
+	variants := map[string]entity.MediaVariant{}
+	for _, t := range variantTargets {
+		if b.Dx() <= t.Width {
+			continue
+		}
+		v := resizeToWidth(img, t.Width)
+		buf := &bytes.Buffer{}
+		if err := jpeg.Encode(buf, v, &jpeg.Options{Quality: 82}); err != nil {
+			return nil, err
+		}
+		vKey := fmt.Sprintf("%s/%s_%s_%d.jpg", prefix, objID, t.Name, t.Width)
+		if err := s.mio.Put(ctx, vKey, buf, int64(buf.Len()), "image/jpeg"); err != nil {
+			return nil, err
+		}
+		variants[t.Name] = entity.MediaVariant{
+			Key: vKey, URL: s.mio.PublicURL(vKey),
+			Width: v.Bounds().Dx(), Height: v.Bounds().Dy(),
+		}
+	}
+	vJSON := "{}"
+	if vb, err := json.Marshal(variants); err == nil {
+		vJSON = string(vb)
+	}
+
+	m.MIME = contentType
+	m.Width = b.Dx()
+	m.Height = b.Dy()
+	m.SizeBytes = int64(len(raw))
+	m.Variants = vJSON
+	m.UploadedBy = actor
+	if err := s.db.Save(&m).Error; err != nil {
+		return nil, err
+	}
+	return &m, nil
+}

@@ -215,6 +215,8 @@ func SetupWithLogger(
 			media.GET("", permCheck.RequirePermission("media.read"), h.Media.List)
 			media.GET("/:id", permCheck.RequirePermission("media.read"), h.Media.Get)
 			media.POST("/upload", permCheck.RequirePermission("media.write"), h.Media.Upload)
+			media.GET("/:id/usage", permCheck.RequirePermission("media.read"), h.Media.Usage)
+			media.POST("/:id/replace", permCheck.RequirePermission("media.write"), h.Media.Replace)
 			media.PATCH("/:id", permCheck.RequirePermission("media.write"), h.Media.UpdateMeta)
 			media.DELETE("/:id", permCheck.RequirePermission("media.write"), h.Media.Delete)
 		}
