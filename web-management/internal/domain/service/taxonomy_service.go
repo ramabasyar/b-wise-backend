@@ -102,8 +102,9 @@ func (s *TaxonomyService) ListTerms(taxonomy string) ([]TermWithCount, error) {
 }
 
 func (s *TaxonomyService) CreateTerm(taxonomy, slug, nameID, nameEN string) (*entity.Term, error) {
-	if taxonomy != "category" && taxonomy != "tag" {
-		return nil, errors.New("taxonomy harus category atau tag")
+	taxonomy = strings.TrimSpace(taxonomy)
+	if len(taxonomy) < 2 || Slugify(taxonomy) != taxonomy {
+		return nil, errors.New("taxonomy harus slug sederhana (huruf kecil/angka/-), mis. category|tag|fakultas")
 	}
 	if strings.TrimSpace(nameID) == "" {
 		return nil, errors.New("nama wajib diisi")
