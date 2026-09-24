@@ -3,6 +3,10 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -10,6 +14,7 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1518,4 +1523,65 @@ func (s *ContentService) tickScheduler() {
 		s.FlushPublicCache()
 		FireWebhooks(s.webhooks, PublishEvent{Event: "unpublish", Entity: "post", ID: p.ID, Slug: p.Slug, At: time.Now()})
 	}
+}
+
+// ==================== F3: LIVE PREVIEW (token HMAC stateless, TTL 30 menit) ====================
+
+func previewSecret() []byte {
+	s := os.Getenv("BWM_PREVIEW_SECRET")
+	if s == "" {
+		s = "bwm-preview-dev-secret"
+	}
+	return []byte(s)
+}
+
+// MakePreviewToken — "postID|expUnix" base64url + potongan tanda tangan HMAC-SHA256.
+func MakePreviewToken(postID string, ttl time.Duration) (string, time.Time) {
+	exp := time.Now().Add(ttl)
+	data := postID + "|" + strconv.FormatInt(exp.Unix(), 10)
+	mac := hmac.New(sha256.New, previewSecret())
+	mac.Write([]byte(data))
+	sig := hex.EncodeToString(mac.Sum(nil))[:32]
+	return base64.RawURLEncoding.EncodeToString([]byte(data)) + "." + sig, exp
+}
+
+// ParsePreviewToken — validasi tanda tangan + kedaluwarsa.
+func ParsePreviewToken(token string) (string, error) {
+	parts := strings.SplitN(token, ".", 2)
+	if len(parts) != 2 {
+		return "", fmt.Errorf("token preview tidak valid: %w", ErrInvalid)
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return "", fmt.Errorf("token preview rusak: %w", ErrInvalid)
+	}
+	mac := hmac.New(sha256.New, previewSecret())
+	mac.Write(raw)
+	want := hex.EncodeToString(mac.Sum(nil))[:32]
+	if !hmac.Equal([]byte(want), []byte(parts[1])) {
+		return "", fmt.Errorf("tanda tangan token tidak cocok: %w", ErrInvalid)
+	}
+	f := strings.SplitN(string(raw), "|", 2)
+	if len(f) != 2 {
+		return "", fmt.Errorf("format token salah: %w", ErrInvalid)
+	}
+	expUnix, _ := strconv.ParseInt(f[1], 10, 64)
+	if time.Now().Unix() > expUnix {
+		return "", fmt.Errorf("token preview kedaluwarsa — buat baru dari editor: %w", ErrInvalid)
+	}
+	return f[0], nil
+}
+
+// PreviewPost — data utk halaman preview web (status apa pun — draft/in_review/scheduled/published).
+func (s *ContentService) PreviewPost(token, locale string) (*PublicPost, error) {
+	id, err := ParsePreviewToken(token)
+	if err != nil {
+		return nil, err
+	}
+	p, err := s.GetPost(id)
+	if err != nil {
+		return nil, err
+	}
+	out := s.publicPostOf(p, locale, true)
+	return &out, nil
 }

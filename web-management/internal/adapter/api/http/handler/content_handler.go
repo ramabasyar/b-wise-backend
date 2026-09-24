@@ -658,3 +658,18 @@ func (h *ContentHandler) ListReviews(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": rows})
 }
+
+// ==================== F3: LIVE PREVIEW ====================
+
+// PreviewToken — POST /api/posts/:id/preview-token — token URL preview 30 menit.
+func (h *ContentHandler) PreviewToken(c *gin.Context) {
+	id := c.Param("id")
+	if _, err := h.svc.GetPost(id); err != nil {
+		errJSON(c, err)
+		return
+	}
+	tok, exp := service.MakePreviewToken(id, 30*time.Minute)
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+		"token": tok, "expires_at": exp, "web_path": "/web/kabar-kampus",
+	}})
+}

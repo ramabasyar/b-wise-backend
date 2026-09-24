@@ -189,3 +189,11 @@ func (h *PublicHandler) RedirectLookup(c *gin.Context) {
 		return gin.H{"from_path": r.FromPath, "to_path": r.ToPath, "status_code": r.StatusCode}, nil
 	})
 }
+
+// Preview — GET /api/v1/public/preview/:token?locale= — data draft utk web staging.
+func (h *PublicHandler) Preview(c *gin.Context) {
+	locale := c.DefaultQuery("locale", "id")
+	h.serve(c, func() (any, error) {
+		return h.svc.PreviewPost(c.Param("token"), locale)
+	})
+}
