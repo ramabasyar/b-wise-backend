@@ -11,7 +11,9 @@ permissions:
   - permission: contents.read
     description: Lihat semua konten web (draft & published)
   - permission: contents.write
-    description: Kelola konten web (buat/edit draft, publish, arsip)
+    description: Kelola konten web (buat/edit draft, submit review, arsip)
+  - permission: contents.publish
+    description: Publish & approve konten — khusus editor/publisher (review workflow F3)
   # Media library (MinIO)
   - permission: media.read
     description: Lihat media library

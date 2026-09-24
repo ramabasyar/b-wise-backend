@@ -428,3 +428,15 @@ type Redirect struct {
 }
 
 func (Redirect) TableName() string { return "redirects" }
+
+// ContentReview — jejak alur editorial (F3: submit/approve/reject + catatan).
+type ContentReview struct {
+	Base
+	EntityType string `json:"entity_type" gorm:"type:varchar(20);index"` // post|page|event
+	EntityID   string `json:"entity_id" gorm:"type:varchar(36);index"`
+	Action     string `json:"action" gorm:"type:varchar(20)"` // submit|approve|reject
+	Note       string `json:"note" gorm:"type:varchar(1000)"`
+	Actor      string `json:"actor" gorm:"type:varchar(36)"`
+}
+
+func (ContentReview) TableName() string { return "content_reviews" }

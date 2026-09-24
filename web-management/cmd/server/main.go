@@ -75,7 +75,7 @@ func main() {
 			err = database.AutoMigrate(db,
 				&entity.Post{}, &entity.Page{}, &entity.Event{},
 				&entity.Banner{}, &entity.MediaAsset{}, &entity.Document{}, &entity.ContentVersion{},
-				&entity.Term{}, &entity.PostTerm{}, &entity.Redirect{},
+				&entity.Term{}, &entity.PostTerm{}, &entity.Redirect{}, &entity.ContentReview{},
 			)
 			if err != nil {
 				zapLogger.Info(fmt.Sprintf("[startup] auto-migrate error: %v", err))

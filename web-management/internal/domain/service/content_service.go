@@ -1387,3 +1387,75 @@ func (s *ContentService) ensurePostRedirect(oldSlug, newSlug string, actor strin
 	to := "/kabar-kampus/" + newSlug
 	_, _ = s.CreateRedirect(from, to, 301, "otomatis: slug berubah", actor)
 }
+
+// ==================== F3: REVIEW WORKFLOW ====================
+
+// SubmitForReview — draft -> in_review (menunggu persetujuan editor).
+func (s *ContentService) SubmitForReview(id, actor string) (*entity.Post, error) {
+	p, err := s.GetPost(id)
+	if err != nil {
+		return nil, err
+	}
+	if p.Status != entity.StatusDraft {
+		return nil, fmt.Errorf("hanya draft yang bisa dikirim review (status saat ini: %s): %w", p.Status, ErrInvalid)
+	}
+	p.Status = entity.StatusInReview
+	p.UpdatedBy = actor
+	if err := s.db.Save(p).Error; err != nil {
+		return nil, err
+	}
+	_ = s.db.Create(&entity.ContentReview{EntityType: "post", EntityID: p.ID, Action: "submit", Actor: actor}).Error
+	return p, nil
+}
+
+// ApprovePost — in_review -> published (setara publish, dengan jejak review).
+func (s *ContentService) ApprovePost(id, actor string) (*entity.Post, error) {
+	p, err := s.GetPost(id)
+	if err != nil {
+		return nil, err
+	}
+	if p.Status != entity.StatusInReview {
+		return nil, fmt.Errorf("approve hanya untuk konten menunggu review (status: %s): %w", p.Status, ErrInvalid)
+	}
+	now := time.Now()
+	p.Status = entity.StatusPublished
+	p.PublishAt = &now
+	p.PublishedVersion = p.Version
+	p.UpdatedBy = actor
+	if err := s.db.Save(p).Error; err != nil {
+		return nil, err
+	}
+	_ = s.db.Create(&entity.ContentReview{EntityType: "post", EntityID: p.ID, Action: "approve", Actor: actor}).Error
+	s.FlushPublicCache()
+	FireWebhooks(s.webhooks, PublishEvent{Event: "publish", Entity: "post", ID: p.ID, Slug: p.Slug, At: now})
+	return p, nil
+}
+
+// RejectPost — in_review -> draft + catatan wajib (kembali ke penulis).
+func (s *ContentService) RejectPost(id, actor, note string) (*entity.Post, error) {
+	if strings.TrimSpace(note) == "" {
+		return nil, fmt.Errorf("catatan penolakan wajib diisi: %w", ErrInvalid)
+	}
+	p, err := s.GetPost(id)
+	if err != nil {
+		return nil, err
+	}
+	if p.Status != entity.StatusInReview {
+		return nil, fmt.Errorf("reject hanya untuk konten menunggu review (status: %s): %w", p.Status, ErrInvalid)
+	}
+	p.Status = entity.StatusDraft
+	p.UpdatedBy = actor
+	if err := s.db.Save(p).Error; err != nil {
+		return nil, err
+	}
+	_ = s.db.Create(&entity.ContentReview{EntityType: "post", EntityID: p.ID, Action: "reject", Note: note, Actor: actor}).Error
+	return p, nil
+}
+
+// ListReviews — jejak alur editorial sebuah konten (terbaru dulu).
+func (s *ContentService) ListReviews(id string) ([]entity.ContentReview, error) {
+	var rows []entity.ContentReview
+	err := s.db.Where("entity_type = ? AND entity_id = ?", "post", id).
+		Order("created_at DESC").Limit(50).Find(&rows).Error
+	return rows, err
+}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -611,4 +612,49 @@ func (h *ContentHandler) DeleteRedirect(c *gin.Context) {
 	}
 	h.svc.FlushPublicCache()
 	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// ==================== F3: REVIEW WORKFLOW ====================
+
+func (h *ContentHandler) SubmitReview(c *gin.Context) {
+	p, err := h.svc.SubmitForReview(c.Param("id"), actorOf(c))
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": p})
+}
+
+func (h *ContentHandler) ApprovePost(c *gin.Context) {
+	p, err := h.svc.ApprovePost(c.Param("id"), actorOf(c))
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": p})
+}
+
+func (h *ContentHandler) RejectPost(c *gin.Context) {
+	var in struct {
+		Note string `json:"note"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || strings.TrimSpace(in.Note) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "note wajib diisi"}})
+		return
+	}
+	p, err := h.svc.RejectPost(c.Param("id"), actorOf(c), in.Note)
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": p})
+}
+
+func (h *ContentHandler) ListReviews(c *gin.Context) {
+	rows, err := h.svc.ListReviews(c.Param("id"))
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": rows})
 }
