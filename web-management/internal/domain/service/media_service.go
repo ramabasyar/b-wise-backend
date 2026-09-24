@@ -39,6 +39,7 @@ const MaxUploadBytes = 15 << 20 // 15 MB
 
 var allowedMIMEs = map[string]bool{
 	"image/jpeg": true, "image/png": true, "image/webp": true, "image/gif": true,
+	"application/pdf": true, // F3: dokumen (footer web /documents) — tanpa variant
 }
 
 // variantTargets — varian lebar tetap (JPEG q82; encode WebP menyusul di F1
@@ -79,7 +80,7 @@ func (s *MediaService) Upload(ctx context.Context, r io.Reader, filename, conten
 		return nil, fmt.Errorf("storage MinIO belum dikonfigurasi: %w", ErrInvalid)
 	}
 	if !allowedMIMEs[contentType] {
-		return nil, fmt.Errorf("tipe %q tidak diizinkan (jpeg/png/webp/gif): %w", contentType, ErrInvalid)
+		return nil, fmt.Errorf("tipe %q tidak diizinkan (jpeg/png/webp/gif/pdf): %w", contentType, ErrInvalid)
 	}
 	raw, err := io.ReadAll(io.LimitReader(r, MaxUploadBytes+1))
 	if err != nil {
@@ -88,6 +89,24 @@ func (s *MediaService) Upload(ctx context.Context, r io.Reader, filename, conten
 	if int64(len(raw)) > MaxUploadBytes {
 		return nil, fmt.Errorf("ukuran melebihi 15MB: %w", ErrInvalid)
 	}
+
+	// PDF — simpan apa adanya, tanpa decode/variant (dokumen, bukan gambar).
+	if contentType == "application/pdf" {
+		id := newObjectID()
+		key := "bwm/" + time.Now().Format("2006/01") + "/" + id + ".pdf"
+		if err := s.mio.Put(ctx, key, bytes.NewReader(raw), int64(len(raw)), contentType); err != nil {
+			return nil, fmt.Errorf("upload ke storage gagal: %w", err)
+		}
+		asset := &entity.MediaAsset{
+			FileKey: key, URL: s.mio.PublicURL(key), Filename: filepath.Base(filename), MIME: contentType,
+			SizeBytes: int64(len(raw)), Variants: "{}", Alt: alt, UploadedBy: actor,
+		}
+		if err := s.db.Create(asset).Error; err != nil {
+			return nil, err
+		}
+		return asset, nil
+	}
+
 	img, format, err := image.Decode(bytes.NewReader(raw))
 	if err != nil {
 		return nil, fmt.Errorf("gambar tidak bisa dibaca: %w", ErrInvalid)
