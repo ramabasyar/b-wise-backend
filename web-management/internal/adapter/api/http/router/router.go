@@ -162,6 +162,8 @@ func SetupWithLogger(
 		{
 			posts.GET("", permCheck.RequirePermission("contents.read"), h.Content.ListPosts)
 			posts.GET("/:id", permCheck.RequirePermission("contents.read"), h.Content.GetPost)
+			posts.POST("/bulk-publish", permCheck.RequirePermission("contents.publish"), h.Content.BulkPublish)
+			posts.POST("/bulk", permCheck.RequirePermission("contents.write"), h.Content.BulkAction)
 			posts.POST("", permCheck.RequirePermission("contents.write"), h.Content.CreatePost)
 			posts.PUT("/:id", permCheck.RequirePermission("contents.write"), h.Content.UpdatePost)
 			posts.DELETE("/:id", permCheck.RequirePermission("contents.write"), h.Content.DeletePost)

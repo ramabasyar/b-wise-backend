@@ -673,3 +673,41 @@ func (h *ContentHandler) PreviewToken(c *gin.Context) {
 		"token": tok, "expires_at": exp, "web_path": "/web/kabar-kampus",
 	}})
 }
+
+// ==================== F3: BULK ACTIONS ====================
+
+// BulkPublish — POST /api/posts/bulk-publish {ids} (permission contents.publish).
+func (h *ContentHandler) BulkPublish(c *gin.Context) {
+	var in struct {
+		IDs []string `json:"ids"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || len(in.IDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "ids wajib diisi"}})
+		return
+	}
+	n, err := h.svc.BulkPublishPosts(in.IDs, actorOf(c))
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"affected": n}})
+}
+
+// BulkAction — POST /api/posts/bulk {action: archive|delete, ids}.
+func (h *ContentHandler) BulkAction(c *gin.Context) {
+	var in struct {
+		Action string   `json:"action"`
+		IDs    []string `json:"ids"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil || len(in.IDs) == 0 ||
+		(in.Action != "archive" && in.Action != "delete") {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "action (archive|delete) + ids wajib"}})
+		return
+	}
+	n, err := h.svc.BulkPosts(in.IDs, in.Action, actorOf(c))
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"affected": n}})
+}

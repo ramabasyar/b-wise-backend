@@ -1585,3 +1585,58 @@ func (s *ContentService) PreviewPost(token, locale string) (*PublicPost, error) 
 	out := s.publicPostOf(p, locale, true)
 	return &out, nil
 }
+
+// ==================== F3: BULK ACTIONS ====================
+
+// BulkPublishPosts — publish massal (lewati arsip), kembalikan jumlah sukses.
+func (s *ContentService) BulkPublishPosts(ids []string, actor string) (int, error) {
+	n := 0
+	for _, id := range ids {
+		p, err := s.GetPost(id)
+		if err != nil || p.Status == entity.StatusArchived {
+			continue
+		}
+		now := time.Now()
+		p.Status = entity.StatusPublished
+		p.PublishAt = &now
+		p.PublishedVersion = p.Version
+		p.UpdatedBy = actor
+		if err := s.db.Save(p).Error; err == nil {
+			n++
+			FireWebhooks(s.webhooks, PublishEvent{Event: "publish", Entity: "post", ID: p.ID, Slug: p.Slug, At: now})
+		}
+	}
+	if n > 0 {
+		s.FlushPublicCache()
+	}
+	return n, nil
+}
+
+// BulkPosts — arsip/hapus massal, kembalikan jumlah sukses.
+func (s *ContentService) BulkPosts(ids []string, action, actor string) (int, error) {
+	n := 0
+	for _, id := range ids {
+		switch action {
+		case "archive":
+			p, err := s.GetPost(id)
+			if err != nil {
+				continue
+			}
+			p.Status = entity.StatusArchived
+			p.UpdatedBy = actor
+			if err := s.db.Save(p).Error; err == nil {
+				n++
+			}
+		case "delete":
+			if err := s.DeletePost(id); err == nil {
+				n++
+			}
+		default:
+			return 0, fmt.Errorf("aksi massal tidak dikenal: %s: %w", action, ErrInvalid)
+		}
+	}
+	if n > 0 {
+		s.FlushPublicCache()
+	}
+	return n, nil
+}
