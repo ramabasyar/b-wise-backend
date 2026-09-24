@@ -23,6 +23,7 @@ var validators = map[string]func(map[string]any) error{
 	"video_embed":  vVideoEmbed,
 	"table":        vTable,
 	"cta_button":   vCTAButton,
+	"list":        vList,
 }
 
 // ValidTypes — daftar tipe block yang diterima (utk dokumentasi/editor UI).
@@ -39,7 +40,7 @@ func Validate(blocks []Block) error {
 	for i, b := range blocks {
 		v, ok := validators[b.Type]
 		if !ok {
-			return fmt.Errorf("block #%d: tipe %q tidak dikenal (valid: heading, paragraph, image, gallery, quote, video_embed, table, cta_button)", i, b.Type)
+			return fmt.Errorf("block #%d: tipe %q tidak dikenal (valid: heading, paragraph, image, gallery, quote, video_embed, table, cta_button, list)", i, b.Type)
 		}
 		if b.Data == nil {
 			return fmt.Errorf("block #%d (%s): data kosong", i, b.Type)
@@ -196,6 +197,34 @@ func vCTAButton(d map[string]any) error {
 	}
 	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "/") {
 		return fmt.Errorf("url harus http(s) atau path relatif")
+	}
+	return nil
+}
+
+// vList — daftar poin: items wajib (array string), style opsional (ordered|unordered).
+func vList(d map[string]any) error {
+	raw, ok := d["items"]
+	if !ok {
+		return fmt.Errorf("items wajib ada (array string)")
+	}
+	arr, ok := raw.([]any)
+	if !ok || len(arr) == 0 {
+		return fmt.Errorf("items harus array berisi minimal 1 item")
+	}
+	for i, it := range arr {
+		sv, ok := it.(string)
+		if !ok || strings.TrimSpace(sv) == "" {
+			return fmt.Errorf("items[%d] harus string tak kosong", i)
+		}
+		if len(sv) > 1000 {
+			return fmt.Errorf("items[%d] maksimal 1000 karakter", i)
+		}
+	}
+	if st, ok := d["style"]; ok && st != nil {
+		sv, _ := st.(string)
+		if sv != "ordered" && sv != "unordered" {
+			return fmt.Errorf("style harus ordered|unordered")
+		}
 	}
 	return nil
 }
