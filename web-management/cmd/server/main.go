@@ -141,6 +141,7 @@ func main() {
 			redisClient = redisCache.Client()
 		}
 		contentSvc := service.NewContentService(db, redisClient).WithWebhooks(webhookURLs)
+		go contentSvc.StartScheduler(context.Background()) // F3: publish/unpublish otomatis per menit
 		handlers = &router.Handlers{
 			Content: handler.NewContentHandler(contentSvc),
 			Public:  handler.NewPublicHandler(contentSvc, redisClient),

@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"regexp"
 	"strings"
@@ -328,12 +329,19 @@ func (s *ContentService) PublishPost(id, actor string, at *time.Time) (*entity.P
 	if at == nil {
 		at = &now
 	}
-	p.Status = entity.StatusPublished
+	if at.After(now) {
+		p.Status = entity.StatusScheduled // F3: terbit otomatis via scheduler saat jatuh tempo
+	} else {
+		p.Status = entity.StatusPublished
+	}
 	p.PublishAt = at
 	p.PublishedVersion = p.Version
 	p.UpdatedBy = actor
 	if err := s.db.Save(p).Error; err != nil {
 		return nil, err
+	}
+	if p.Status != entity.StatusPublished {
+		return p, nil // scheduled: tanpa flush/webhook — saat tayang nanti
 	}
 	s.FlushPublicCache()
 	FireWebhooks(s.webhooks, PublishEvent{Event: "publish", Entity: "post", ID: p.ID, Slug: p.Slug, At: time.Now()})
@@ -1458,4 +1466,56 @@ func (s *ContentService) ListReviews(id string) ([]entity.ContentReview, error) 
 	err := s.db.Where("entity_type = ? AND entity_id = ?", "post", id).
 		Order("created_at DESC").Limit(50).Find(&rows).Error
 	return rows, err
+}
+
+// ==================== F3: SCHEDULED PUBLISH/UNPUBLISH (cron per menit) ====================
+
+// StartScheduler — loop per menit: terbitkan konten terjadwal yang jatuh tempo,
+// turunkan konten tayang yang lewat unpublish_at. Jalankan sbg goroutine.
+func (s *ContentService) StartScheduler(ctx context.Context) {
+	t := time.NewTicker(time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			s.tickScheduler()
+		}
+	}
+}
+
+func (s *ContentService) tickScheduler() {
+	now := time.Now()
+	var due []entity.Post
+	if err := s.db.Where("status = ? AND publish_at IS NOT NULL AND publish_at <= ?",
+		entity.StatusScheduled, now).Find(&due).Error; err != nil {
+		return
+	}
+	for i := range due {
+		p := &due[i]
+		p.Status = entity.StatusPublished
+		p.PublishedVersion = p.Version
+		if err := s.db.Save(p).Error; err != nil {
+			continue
+		}
+		log.Printf("[scheduler] publish otomatis: %s (%s)", p.Slug, p.ID)
+		s.FlushPublicCache()
+		FireWebhooks(s.webhooks, PublishEvent{Event: "publish", Entity: "post", ID: p.ID, Slug: p.Slug, At: time.Now()})
+	}
+	var expire []entity.Post
+	if err := s.db.Where("status = ? AND unpublish_at IS NOT NULL AND unpublish_at <= ?",
+		entity.StatusPublished, now).Find(&expire).Error; err != nil {
+		return
+	}
+	for i := range expire {
+		p := &expire[i]
+		p.Status = entity.StatusDraft
+		if err := s.db.Save(p).Error; err != nil {
+			continue
+		}
+		log.Printf("[scheduler] unpublish otomatis: %s (%s)", p.Slug, p.ID)
+		s.FlushPublicCache()
+		FireWebhooks(s.webhooks, PublishEvent{Event: "unpublish", Entity: "post", ID: p.ID, Slug: p.Slug, At: time.Now()})
+	}
 }
