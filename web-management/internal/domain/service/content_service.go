@@ -327,9 +327,6 @@ func (s *ContentService) PublishPost(id, actor string, at *time.Time) (*entity.P
 	if err != nil {
 		return nil, err
 	}
-	if p.Status == entity.StatusArchived {
-		return nil, fmt.Errorf("konten terarsip — duplikat utk menerbitkan ulang: %w", ErrInvalid)
-	}
 	now := time.Now()
 	if at == nil {
 		at = &now
