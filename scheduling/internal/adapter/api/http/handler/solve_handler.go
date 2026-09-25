@@ -144,6 +144,16 @@ func (h *SolveHandler) Start(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"success": true, "data": job})
 }
 
+// ListEntries GET /api/timetable/entries — daftar draft utk form penyesuaian manual.
+func (h *SolveHandler) ListEntries(c *gin.Context) {
+	rows, err := h.svc.ListEntriesForAdjustment(c.Query("term_id"))
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": rows})
+}
+
 // ProposeManualAdjustment POST /api/timetable/adjustments/manual — usulan pindah manual satu sesi.
 func (h *SolveHandler) ProposeManualAdjustment(c *gin.Context) {
 	var req struct {

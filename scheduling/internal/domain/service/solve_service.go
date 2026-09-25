@@ -1230,6 +1230,35 @@ func (s *SolveService) ProposeManualAdjustment(entryID, toSlotID, toRoomID, reas
 	return p, nil
 }
 
+// EntryRow — baris ringkas utk form penyesuaian manual (portal).
+type EntryRow struct {
+	ID         string `json:"id"`
+	CourseCode string `json:"course_code"`
+	GroupCode  string `json:"group_code"`
+	Day        int    `json:"day"`
+	Jam        string `json:"jam"`
+	RoomCode   string `json:"room_code"`
+	RoomID     string `json:"room_id"`
+	SlotID     string `json:"slot_id"`
+}
+
+// ListEntriesForAdjustment — daftar entri DRAFT (flat) utk pilih sesi di form penyesuaian manual.
+func (s *SolveService) ListEntriesForAdjustment(termID string) ([]EntryRow, error) {
+	rows := []EntryRow{}
+	q := `SELECT te.id, te.course_code, COALESCE(cg.code,'') AS group_code, te.day,
+	      te.start_time||'–'||te.end_time AS jam, COALESCE(r.code,'') AS room_code,
+	      te.room_id, te.slot_id
+	      FROM timetable_entries te
+	      LEFT JOIN class_groups cg ON cg.id = te.group_id
+	      LEFT JOIN rooms r ON r.id = te.room_id
+	      WHERE te.version_id IS NULL AND (? = '' OR te.term_id = ?)
+	      ORDER BY te.day, te.start_time, te.course_code`
+	if err := s.db.Raw(q, termID, termID).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 func (s *SolveService) ListAdjustments(status string) ([]entity.AdjustmentProposal, error) {
 	var items []entity.AdjustmentProposal
 	if err := s.db.Where("status = ?", status).Order("created_at DESC").Limit(50).Find(&items).Error; err != nil {
