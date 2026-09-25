@@ -104,6 +104,13 @@ func (s *SolveService) patch(jobID string, fields map[string]any) {
 }
 
 // buildModel — kumpulkan data master → payload solver.
+// isGraduateProgram — true bila program pascasarjana (S2/S3/Magister/Doktor): boleh kelas Sabtu.
+func isGraduateProgram(name string) bool {
+	n := strings.ToLower(name)
+	return strings.Contains(n, "s2") || strings.Contains(n, "s3") ||
+		strings.Contains(n, "magister") || strings.Contains(n, "doktor")
+}
+
 func (s *SolveService) buildModel(termID string) (*solverclient.SolverPayload, error) {
 	var offerings []entity.Offering
 	if err := s.db.Preload("Course").Preload("Lecturer").Preload("ClassGroup").
@@ -386,11 +393,16 @@ func (s *SolveService) buildModel(termID string) (*solverclient.SolverPayload, e
 			if o.ClassGroup != nil {
 				size = o.ClassGroup.SizeEst
 			}
+			// F4-C: Sabtu (day 6) hanya utk kelas S2/Magister — sesi non-S2 diblokir.
+			var bdays []int
+			if o.ClassGroup != nil && !isGraduateProgram(o.ClassGroup.ProgramName) {
+				bdays = []int{6}
+			}
 			p.Sessions = append(p.Sessions, solverclient.SolverSession{
 				Key: fmt.Sprintf("%s#%d", o.ID, n), OfferingID: o.ID,
 				CourseCode: ccode, CourseType: ctype, RoomNeed: cneed, RoomType: o.RoomType,
 				GroupID: o.ClassGroupID, GroupSize: size, LecturerID: lect, LecturerIDs: cLects,
-				DurationSlots: dur, DurationMinutes: theoryMin,
+				DurationSlots: dur, DurationMinutes: theoryMin, BlockedDays: bdays,
 			})
 		}
 		// sesi praktikum terpisah (ruang for_practice, durasi blok sks × menit praktikum)
@@ -407,12 +419,17 @@ func (s *SolveService) buildModel(termID string) (*solverclient.SolverPayload, e
 			if o.ClassGroup != nil {
 				size = o.ClassGroup.SizeEst
 			}
+			// F4-C: Sabtu hanya S2 — berlaku juga utk sesi praktikum non-S2.
+			var bdays []int
+			if o.ClassGroup != nil && !isGraduateProgram(o.ClassGroup.ProgramName) {
+				bdays = []int{6}
+			}
 			practiceMin := o.PracticeSks * tp.SksMinutesPractice
 			p.Sessions = append(p.Sessions, solverclient.SolverSession{
 				Key: fmt.Sprintf("%s#p", o.ID), OfferingID: o.ID,
 				CourseCode: ccode, CourseType: "practice", RoomNeed: "practice", RoomType: "",
 				GroupID: o.ClassGroupID, GroupSize: size, LecturerID: lect, LecturerIDs: cLects,
-				DurationSlots: (o.PracticeSks + 1) / 2, DurationMinutes: practiceMin,
+				DurationSlots: (o.PracticeSks + 1) / 2, DurationMinutes: practiceMin, BlockedDays: bdays,
 			})
 		}
 	}

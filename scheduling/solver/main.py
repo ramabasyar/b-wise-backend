@@ -82,6 +82,7 @@ class Session(BaseModel):
     group_size: int = 0
     lecturer_id: str = ""
     lecturer_ids: list[str] | None = None  # H5/H7 multi-dosen: semua dosen yang harus bebas slot (parallel)
+    blocked_days: list[int] = []   # F4-C: hari terlarang sesi ini (Sabtu=6 utk non-S2)
     duration_slots: int = 1       # fallback blok (slot)
     duration_minutes: int = 0     # prioritas: blok minimal dgn span >= menit
 
@@ -287,6 +288,9 @@ def solve_stream(req: SolveRequest):
             # F3v2 kalender: hari terblokir kalender akademik — KECUALI slot locked
             # sesi ini sendiri (keputusan eksplisit admin menang atas agregasi).
             if sl.day in cal_blocked_days and locked_by_idx.get(i, (None, None))[0] != j:
+                continue
+            # F4-C: hari terlarang per sesi (Sabtu hanya S2) — locked tetap menang.
+            if sl.day in s.blocked_days and locked_by_idx.get(i, (None, None))[0] != j:
                 continue
             # H7: hari terblokir dosen (full-day) — difilter di DOMAIN supaya greedy,
             # local search, dan CP-SAT semuanya patuh (bukan cuma constraint CP-SAT).
@@ -518,6 +522,9 @@ def solve_stream(req: SolveRequest):
                 continue
             # F3v2 kalender — hard di jalur greedy pass-2/evict + kandidat LS
             if slots[j].day in cal_blocked_days and (lj is None or j != lj[0]):
+                continue
+            # F4-C: hari terlarang per sesi (Sabtu hanya S2) — hard di semua jalur
+            if slots[j].day in sessions[i].blocked_days and (lj is None or j != lj[0]):
                 continue
             if any(slots[j].day in b for b in bd):
                 continue
