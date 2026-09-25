@@ -46,6 +46,7 @@ class Room(BaseModel):
     code: str
     type: str = "theory"
     capacity: int = 0
+    program_codes: list[str] = []  # F4-D: prodi berhak (kosong = komunal)
 
 class RoomType(BaseModel):
     """Kamus tipe ruang dinamis (tabel room_types di backend)."""
