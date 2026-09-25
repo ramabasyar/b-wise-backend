@@ -201,6 +201,7 @@ func SetupWithLogger(
 		tt.POST("/move", permCheck.RequirePermission("schedules.write"), h.Solve.MoveEntry)
 		tt.GET("/adjustments", permCheck.RequirePermission("schedules.read"), h.Solve.ListAdjustments)
 		tt.POST("/adjustments/propose", permCheck.RequirePermission("schedules.write"), h.Solve.ProposeAdjustment)
+		tt.POST("/adjustments/manual", permCheck.RequirePermission("schedules.write"), h.Solve.ProposeManualAdjustment)
 		tt.POST("/adjustments/:id/decide", permCheck.RequirePermission("schedules.write"), h.Solve.DecideAdjustment)
 		tt.GET("/day-view", permCheck.RequirePermission("schedules.read"), h.Solve.DayView)
 		tt.POST("/overrides", permCheck.RequirePermission("schedules.write"), h.Solve.CreateOverride)

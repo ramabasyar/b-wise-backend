@@ -144,6 +144,26 @@ func (h *SolveHandler) Start(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"success": true, "data": job})
 }
 
+// ProposeManualAdjustment POST /api/timetable/adjustments/manual — usulan pindah manual satu sesi.
+func (h *SolveHandler) ProposeManualAdjustment(c *gin.Context) {
+	var req struct {
+		EntryID  string `json:"entry_id" binding:"required"`
+		ToSlotID string `json:"to_slot_id" binding:"required"`
+		ToRoomID string `json:"to_room_id"`
+		Reason   string `json:"reason" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "entry_id, to_slot_id, dan reason wajib"}})
+		return
+	}
+	p, err := h.svc.ProposeManualAdjustment(req.EntryID, req.ToSlotID, req.ToRoomID, req.Reason, c.GetString("user_id"))
+	if err != nil {
+		errJSON(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": p})
+}
+
 // Get GET /api/solve-jobs/:id — status + progress (dipoll UI).
 func (h *SolveHandler) Get(c *gin.Context) {
 	job, err := h.svc.Get(c.Param("id"))

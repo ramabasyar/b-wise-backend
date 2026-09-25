@@ -1170,6 +1170,66 @@ func (s *SolveService) ProposeAdjustment(roomAvailID, actorID string) (*entity.A
 }
 
 // ListAdjustments — daftar proposal (default pending).
+// ProposeManualAdjustment — usulan pemindahan MANUAL satu sesi oleh user
+// (dosen berhalangan, permintaan prodi, dsb) → proposal PENDING menunggu
+// keputusan (DecideAdjustment yang sama menerapkan: pindah + terkunci).
+// Validasi penuh via validateMove; konflik → ditolak dgn pesan agar user pilih slot/ruang lain.
+func (s *SolveService) ProposeManualAdjustment(entryID, toSlotID, toRoomID, reason, actorID string) (*entity.AdjustmentProposal, error) {
+	if strings.TrimSpace(reason) == "" {
+		return nil, errors.New("alasan wajib diisi")
+	}
+	var entry entity.TimetableEntry
+	if err := s.db.First(&entry, "id = ?", entryID).Error; err != nil {
+		return nil, errors.New("entri jadwal tidak ditemukan")
+	}
+	if entry.VersionID != nil {
+		return nil, errors.New("entri milik versi terpublikasi — tidak dapat diajukan")
+	}
+	var slot entity.TimeSlot
+	if err := s.db.First(&slot, "id = ?", toSlotID).Error; err != nil {
+		return nil, errors.New("slot waktu tujuan tidak ditemukan")
+	}
+	roomID := toRoomID
+	if roomID == "" {
+		roomID = entry.RoomID // kosong = ruang tetap
+	}
+	var room entity.Room
+	if err := s.db.First(&room, "id = ?", roomID).Error; err != nil {
+		return nil, errors.New("ruang tujuan tidak ditemukan")
+	}
+	ns, ne, err := s.validateMove(&entry, slot, room)
+	if err != nil {
+		return nil, fmt.Errorf("tidak bisa diajukan: %s", err.Error())
+	}
+	fromRoom := ""
+	if entry.RoomID != "" {
+		var fromR entity.Room
+		if err := s.db.First(&fromR, "id = ?", entry.RoomID).Error; err == nil {
+			fromRoom = fromR.Code
+		}
+	}
+	groupCode := ""
+	var grp entity.ClassGroup
+	if err := s.db.First(&grp, "id = ?", entry.GroupID).Error; err == nil {
+		groupCode = grp.Code
+	}
+	ch := AdjChange{
+		EntryID: entry.ID, CourseCode: entry.CourseCode, GroupCode: groupCode,
+		FromDay: entry.Day, FromJam: entry.StartTime + "–" + entry.EndTime, FromRoom: fromRoom,
+		ToDay: slot.Day, ToJam: min2hm(ns) + "–" + min2hm(ne), ToRoom: room.Code,
+		ToSlotID: slot.ID, ToRoomID: room.ID,
+	}
+	chJSON, _ := json.Marshal([]AdjChange{ch})
+	p := &entity.AdjustmentProposal{
+		TermID: entry.TermID, Reason: reason,
+		Changes: string(chJSON), Unresolved: "[]", CreatedBy: actorID,
+	}
+	if err := s.db.Create(p).Error; err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
 func (s *SolveService) ListAdjustments(status string) ([]entity.AdjustmentProposal, error) {
 	var items []entity.AdjustmentProposal
 	if err := s.db.Where("status = ?", status).Order("created_at DESC").Limit(50).Find(&items).Error; err != nil {
