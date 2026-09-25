@@ -83,6 +83,8 @@ class Session(BaseModel):
     lecturer_id: str = ""
     lecturer_ids: list[str] | None = None  # H5/H7 multi-dosen: semua dosen yang harus bebas slot (parallel)
     blocked_days: list[int] = []   # F4-C: hari terlarang sesi ini (Sabtu=6 utk non-S2)
+    group_program: str = ""       # F4-D: program rombel (match rooms.program_codes)
+    allowed_rooms: list[str] = []  # F4-D: patokan ruang spesifik offering (menang atas program_codes)
     duration_slots: int = 1       # fallback blok (slot)
     duration_minutes: int = 0     # prioritas: blok minimal dgn span >= menit
 
@@ -272,6 +274,11 @@ def solve_stream(req: SolveRequest):
         for k, r in enumerate(rooms):
             if r.capacity and s.group_size and r.capacity < s.group_size:
                 continue  # H2 kapasitas
+            # F4-D: patokan ruang per MK (menang) + batas prodi per ruang (komunal bila kosong)
+            if s.allowed_rooms and r.id not in s.allowed_rooms:
+                continue
+            if not s.allowed_rooms and r.program_codes and s.group_program and s.group_program not in r.program_codes:
+                continue
             if not room_type_ok(s.room_type or s.room_need or ("practice" if s.course_type == "practice" else ""), r.type, compat):
                 continue  # H3 tipe ruang
             elig.append(k)

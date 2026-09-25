@@ -211,7 +211,7 @@ func (s *SolveService) buildModel(termID string) (*solverclient.SolverPayload, e
 		SpreadWeight: cfg.SpreadWeight, RoomWasteWeight: cfg.RoomWasteWeight, LastSlotWeight: cfg.LastSlotWeight,
 	}
 	for _, r := range rooms {
-		p.Rooms = append(p.Rooms, solverclient.SolverRoom{ID: r.ID, Code: r.Code, Type: r.Type, Capacity: r.Capacity})
+		p.Rooms = append(p.Rooms, solverclient.SolverRoom{ID: r.ID, Code: r.Code, Type: r.Type, Capacity: r.Capacity, ProgramCodes: r.ProgramCodes})
 	}
 	for _, sl := range slots {
 		p.Slots = append(p.Slots, solverclient.SolverSlot{ID: sl.ID, Day: sl.Day, Order: sl.Order, StartTime: sl.StartTime, EndTime: sl.EndTime})
@@ -395,14 +395,19 @@ func (s *SolveService) buildModel(termID string) (*solverclient.SolverPayload, e
 			}
 			// F4-C: Sabtu (day 6) hanya utk kelas S2/Magister — sesi non-S2 diblokir.
 			var bdays []int
-			if o.ClassGroup != nil && !isGraduateProgram(o.ClassGroup.ProgramName) {
-				bdays = []int{6}
+			gprog := ""
+			if o.ClassGroup != nil {
+				gprog = o.ClassGroup.ProgramName
+				if !isGraduateProgram(gprog) {
+					bdays = []int{6}
+				}
 			}
 			p.Sessions = append(p.Sessions, solverclient.SolverSession{
 				Key: fmt.Sprintf("%s#%d", o.ID, n), OfferingID: o.ID,
 				CourseCode: ccode, CourseType: ctype, RoomNeed: cneed, RoomType: o.RoomType,
 				GroupID: o.ClassGroupID, GroupSize: size, LecturerID: lect, LecturerIDs: cLects,
 				DurationSlots: dur, DurationMinutes: theoryMin, BlockedDays: bdays,
+				GroupProgram: gprog, AllowedRooms: o.AllowedRooms,
 			})
 		}
 		// sesi praktikum terpisah (ruang for_practice, durasi blok sks × menit praktikum)
@@ -421,8 +426,12 @@ func (s *SolveService) buildModel(termID string) (*solverclient.SolverPayload, e
 			}
 			// F4-C: Sabtu hanya S2 — berlaku juga utk sesi praktikum non-S2.
 			var bdays []int
-			if o.ClassGroup != nil && !isGraduateProgram(o.ClassGroup.ProgramName) {
-				bdays = []int{6}
+			gprog := ""
+			if o.ClassGroup != nil {
+				gprog = o.ClassGroup.ProgramName
+				if !isGraduateProgram(gprog) {
+					bdays = []int{6}
+				}
 			}
 			practiceMin := o.PracticeSks * tp.SksMinutesPractice
 			p.Sessions = append(p.Sessions, solverclient.SolverSession{
@@ -430,6 +439,7 @@ func (s *SolveService) buildModel(termID string) (*solverclient.SolverPayload, e
 				CourseCode: ccode, CourseType: "practice", RoomNeed: "practice", RoomType: "",
 				GroupID: o.ClassGroupID, GroupSize: size, LecturerID: lect, LecturerIDs: cLects,
 				DurationSlots: (o.PracticeSks + 1) / 2, DurationMinutes: practiceMin, BlockedDays: bdays,
+				GroupProgram: gprog, AllowedRooms: o.AllowedRooms,
 			})
 		}
 	}

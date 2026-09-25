@@ -125,6 +125,7 @@ type Room struct {
 	Floor      int            `json:"floor" gorm:"default:0"`
 	FacultyID  *string        `json:"faculty_id,omitempty" gorm:"type:varchar(36);index"`     // NULL = komunal
 	Facilities map[string]any `json:"facilities,omitempty" gorm:"type:jsonb;serializer:json"` // {pc:40, projector:true, ac:true}
+	ProgramCodes  []string    `json:"program_codes,omitempty" gorm:"type:jsonb;serializer:json"`   // F4-D: prodi yg berhak (kosong = komunal)
 	Notes      string         `json:"notes,omitempty" gorm:"type:text"`
 	IsActive   bool           `json:"is_active" gorm:"default:true"`
 	Source     string         `json:"source" gorm:"type:varchar(20);default:'manual'"`
@@ -314,6 +315,7 @@ type Offering struct {
 	SessionSks      int       `json:"session_sks" gorm:"default:2"`                // SKS per sesi (2 SKS = 1 sesi 100m)
 	PracticeSks     int       `json:"practice_sks" gorm:"default:0"`                // SKS praktikum/minggu (sesi blok terpisah, ruang for_practice)
 	RoomType        string    `json:"room_type,omitempty" gorm:"type:varchar(30)"` // pin tipe ruang (menang atas room_need)
+	AllowedRooms    []string  `json:"allowed_rooms,omitempty" gorm:"type:jsonb;serializer:json"` // F4-D: patokan ruang spesifik utk offering ini (menang atas program_codes ruang)
 	SiakadKelasID  string    `json:"siakad_kelas_id,omitempty" gorm:"type:varchar(30);uniqueIndex"` // data-id kelas siakad (traceability sync)
 	Notes           string    `json:"notes,omitempty" gorm:"type:text"`
 	IsActive        bool      `json:"is_active" gorm:"default:true"`
