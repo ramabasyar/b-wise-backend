@@ -45,6 +45,7 @@ type IndicatorDefinition struct {
 	Level        int            `json:"level" gorm:"default:0"`                                                // L0 nasional .. L6 individu (blueprint v2 §3.2)
 	ApplicablePT string         `json:"applicable_pt,omitempty" gorm:"type:varchar(50)"`                       // all|ptn|ptn-bh|pts
 	SortOrder    int            `json:"sort_order,omitempty" gorm:"default:0"`
+	ParentID     *string        `json:"parent_id,omitempty" gorm:"type:varchar(36);index"` // sub-IKU: anak dari indikator utama (Sub IKU 1/9, dst.)
 	RegVersionID string         `json:"reg_version_id" gorm:"type:varchar(36);index;not null"`
 	ValidFrom    *time.Time     `json:"valid_from,omitempty" gorm:"type:timestamptz"`
 	ValidTo      *time.Time     `json:"valid_to,omitempty" gorm:"type:timestamptz"`

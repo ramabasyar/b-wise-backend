@@ -114,10 +114,83 @@ func (h *IkuHandler) CreatePeriod(c *gin.Context) {
 
 var _ = time.Now
 
-// UpdateIndicator PATCH /api/indicators/:id — atur polarity & rollup_rule (F10).
+// CreateIndicator POST /api/indicators — tambah indikator (regulasi baru / sub-IKU / KPI lokal kampus).
+type CreateIndicatorRequest struct {
+	IkuCode      string `json:"iku_code" binding:"required"`
+	Name         string `json:"name" binding:"required"`
+	Description  string `json:"description"`
+	Nature       string `json:"nature"`       // wajib|pilihan|partisipatif (default wajib)
+	PeriodType   string `json:"period_type"`  // quarterly|semester|annual (default annual)
+	RollupRule   string `json:"rollup_rule"`  // sum|avg|last (default avg)
+	Polarity     string `json:"polarity"`     // higher_is_better|lower_is_better (default higher)
+	ApplicablePT string `json:"applicable_pt"`
+	SortOrder    int    `json:"sort_order"`
+	RegVersionID string `json:"reg_version_id" binding:"required"`
+	ParentID     string `json:"parent_id"` // opsional: sub-IKU (harus satu reg_version dgn parent)
+}
+
+func (h *IkuHandler) CreateIndicator(c *gin.Context) {
+	var req CreateIndicatorRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		return
+	}
+	if req.Nature == "" {
+		req.Nature = "wajib"
+	}
+	if req.Nature != "wajib" && req.Nature != "pilihan" && req.Nature != "partisipatif" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "nature harus wajib|pilihan|partisipatif"}})
+		return
+	}
+	if req.PeriodType == "" {
+		req.PeriodType = "annual"
+	}
+	if req.RollupRule == "" {
+		req.RollupRule = "avg"
+	}
+	if req.Polarity == "" {
+		req.Polarity = "higher_is_better"
+	}
+	var reg entity.RegulatoryVersion
+	if err := h.svc.DB().Where("id = ?", req.RegVersionID).First(&reg).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "reg_version_id tidak dikenal"}})
+		return
+	}
+	var parentID *string
+	if req.ParentID != "" {
+		var parent entity.IndicatorDefinition
+		if err := h.svc.DB().Where("id = ?", req.ParentID).First(&parent).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "parent_id tidak dikenal"}})
+			return
+		}
+		if parent.RegVersionID != req.RegVersionID {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "parent harus berada pada reg_version yang sama"}})
+			return
+		}
+		parentID = &req.ParentID
+	}
+	uid, _ := middleware.GetUserID(c)
+	ind := entity.IndicatorDefinition{
+		IkuCode: req.IkuCode, Name: req.Name, Description: req.Description,
+		Nature: req.Nature, PeriodType: req.PeriodType, RollupRule: req.RollupRule,
+		Polarity: req.Polarity, ApplicablePT: req.ApplicablePT, SortOrder: req.SortOrder,
+		RegVersionID: req.RegVersionID, ParentID: parentID, IsActive: true, CreatedBy: uid,
+	}
+	if err := h.svc.DB().Create(&ind).Error; err != nil {
+		errStatus(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": ind})
+}
+
+// UpdateIndicator PATCH /api/indicators/:id — polarity/rollup (F10) + nama/deskripsi/aktivasi kampus/urutan.
 type UpdateIndicatorRequest struct {
-	Polarity   *string `json:"polarity"`    // higher_is_better|lower_is_better
-	RollupRule *string `json:"rollup_rule"` // sum|avg|last
+	Polarity    *string `json:"polarity"`    // higher_is_better|lower_is_better
+	RollupRule  *string `json:"rollup_rule"` // sum|avg|last
+	Name        *string `json:"name"`        // rename indikator
+	Description *string `json:"description"`
+	IsActive    *bool   `json:"is_active"`   // aktivasi kampus (indikator berlaku/tidak utk kampus ini)
+	SortOrder   *int    `json:"sort_order"`
 }
 
 func (h *IkuHandler) UpdateIndicator(c *gin.Context) {
@@ -140,6 +213,18 @@ func (h *IkuHandler) UpdateIndicator(c *gin.Context) {
 			return
 		}
 		patch["rollup_rule"] = *req.RollupRule
+	}
+	if req.Name != nil && *req.Name != "" {
+		patch["name"] = *req.Name
+	}
+	if req.Description != nil {
+		patch["description"] = *req.Description
+	}
+	if req.IsActive != nil {
+		patch["is_active"] = *req.IsActive
+	}
+	if req.SortOrder != nil {
+		patch["sort_order"] = *req.SortOrder
 	}
 	if len(patch) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "tidak ada field yang diubah"}})

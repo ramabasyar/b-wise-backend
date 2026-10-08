@@ -128,6 +128,7 @@ func SetupWithLogger(
 	indicators.Use(jwksAuth.RequireAuth(), permCheck.CheckAccess())
 	{
 		indicators.GET("", permCheck.RequirePermission("indicators.read"), h.Iku.ListIndicators)
+		indicators.POST("", permCheck.RequirePermission("indicators.write"), h.Iku.CreateIndicator)
 		indicators.GET("/:id", permCheck.RequirePermission("indicators.read"), h.Iku.GetIndicator)
 		indicators.PATCH("/:id", permCheck.RequirePermission("indicators.write"), h.Iku.UpdateIndicator) // F10: polarity/rollup
 	}
