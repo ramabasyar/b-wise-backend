@@ -111,6 +111,12 @@ func (h *AirlinkHandler) GetUsageSummary(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 
 	data, err := h.radius.GetUsageSummary(startTime, endTime, limit)
+	// Enrich dengan peak speed per user
+	for i := range data {
+		if peak, peakErr := h.radius.GetPeakSpeed(data[i].UserName, startTime, endTime); peakErr == nil {
+			data[i].PeakSpeedMbps = peak
+		}
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to query usage", "details": err.Error()})
 		return

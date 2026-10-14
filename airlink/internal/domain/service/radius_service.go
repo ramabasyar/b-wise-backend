@@ -232,6 +232,7 @@ type UsageSummary struct {
 	TotalSessions int     `json:"total_sessions"`
 	TotalDuration int64   `json:"total_duration_sec"`
 	AvgSpeedMbps  float64 `json:"avg_speed_mbps"`
+	PeakSpeedMbps float64 `json:"peak_speed_mbps"`
 }
 
 // UsageSession — detail bandwidth per sesi
@@ -281,6 +282,21 @@ func (s *RadiusService) GetUsageSummary(startTime, endTime time.Time, limit int)
 		results = append(results, u)
 	}
 	return results, rows.Err()
+}
+
+// GetPeakSpeed — kecepatan maksimum per user (sesi tercepat)
+func (s *RadiusService) GetPeakSpeed(username string, startTime, endTime time.Time) (float64, error) {
+	query := `
+		SELECT COALESCE(MAX(
+			CASE WHEN acctsessiontime > 60 THEN
+				(COALESCE(acctinputoctets,0) + COALESCE(acctoutputoctets,0)) * 8.0 / acctsessiontime / 1000000
+			ELSE 0 END
+		), 0)
+		FROM radacct
+		WHERE username = $1 AND acctstarttime >= $2 AND acctstarttime <= $3`
+	var peak float64
+	err := s.db.QueryRow(query, username, startTime, endTime).Scan(&peak)
+	return peak, err
 }
 
 // GetUserUsageSessions — detail bandwidth per sesi untuk satu user
