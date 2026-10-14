@@ -54,7 +54,7 @@ func (s *RadiusService) GetActiveSessions(username string, limit, offset int) ([
 
 	argIdx := len(args) + 1
 	query := fmt.Sprintf(`SELECT COALESCE(acctsessionid,''), COALESCE(acctuniqueid,''), COALESCE(username,''),
-		COALESCE(nasipaddress,''), calledstationid, callingstationid, framedipaddress,
+		COALESCE(nasipaddress::text,''), calledstationid, callingstationid, framedipaddress::text,
 		acctstarttime, acctupdatetime, acctstoptime
 		FROM radacct %s ORDER BY acctstarttime DESC LIMIT $%d OFFSET $%d`, where, argIdx, argIdx+1)
 	args = append(args, limit, offset)
@@ -109,7 +109,7 @@ func (s *RadiusService) GetSessionHistory(username string, startTime, endTime ti
 
 	argIdx := len(args) + 1
 	query := fmt.Sprintf(`SELECT COALESCE(acctsessionid,''), COALESCE(acctuniqueid,''), COALESCE(username,''),
-		COALESCE(nasipaddress,''), calledstationid, callingstationid, framedipaddress,
+		COALESCE(nasipaddress::text,''), calledstationid, callingstationid, framedipaddress::text,
 		acctstarttime, acctupdatetime, acctstoptime
 		FROM radacct %s ORDER BY acctstarttime DESC LIMIT $%d OFFSET $%d`, where, argIdx, argIdx+1)
 	args = append(args, limit, offset)
