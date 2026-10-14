@@ -11,8 +11,14 @@ import (
 
 // CertService — menerbitkan & mencabut sertifikat WiFi via SSH ke host FreeRADIUS
 type CertService struct {
-	sshHost string // user@host
-	certTTL time.Duration
+	coaSecret string // RADIUS shared secret utk CoA
+	sshHost   string // user@host
+	certTTL   time.Duration
+}
+
+func (s *CertService) SetCoaSecret(secret string) *CertService {
+	s.coaSecret = secret
+	return s
 }
 
 func NewCertService(sshUser, sshHost string) *CertService {
@@ -168,4 +174,46 @@ func (s *CertService) CertMetadata(username, device string) (string, time.Time, 
 		return "", time.Time{}, fmt.Errorf("metadata sertifikat tidak lengkap")
 	}
 	return serial, expiry, nil
+}
+
+// DisconnectSession mengirim RADIUS Disconnect-Request (CoA) ke NAS/AP.
+// Return: error jika CoA gagal; nil jika Disconnect-ACK atau Disconnect-NAK.
+func (s *CertService) DisconnectSession(username, sessionID, nasIP, callingStationID string) error {
+	if username == "" || sessionID == "" || nasIP == "" {
+		return fmt.Errorf("CoA: parameter tidak lengkap")
+	}
+	secret := s.coaSecret
+	if secret == "" {
+		return fmt.Errorf("CoA: secret NAS tidak dikonfigurasi")
+	}
+
+	// Bangun atribut RADIUS utk Disconnect-Request (RFC 5176)
+	attrs := fmt.Sprintf("User-Name = %s\nAcct-Session-Id = %s\nNAS-IP-Address = %s\n", username, sessionID, nasIP)
+	if callingStationID != "" {
+		attrs += fmt.Sprintf("Calling-Station-Id = \"%s\"\n", callingStationID)
+	}
+
+	cmd := exec.Command("ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+		s.sshHost,
+		fmt.Sprintf("sudo -n sh -c 'printf \"%%s\" | timeout 5 radclient -r 1 -t 3 -x %s:3799 disconnect %s 2>&1'", attrs, secret))
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("CoA exec: %v, stderr: %s", err, stderr.String())
+	}
+
+	output := stdout.String()
+	if strings.Contains(output, "Disconnect-ACK") {
+		return nil
+	}
+	if strings.Contains(output, "Disconnect-NAK") {
+		return fmt.Errorf("NAS menolak disconnect (NAK): sesi mungkin sudah berakhir")
+	}
+	if strings.Contains(output, "No reply") {
+		return fmt.Errorf("NAS tidak merespons CoA (port 3799): pastikan DAS/DAC aktif di UniFi")
+	}
+	return fmt.Errorf("CoA hasil tidak dikenal: %s", output)
 }

@@ -195,3 +195,31 @@ func (s *RadiusService) GetHealth() domain.HealthStatus {
 	}
 	return h
 }
+
+// ActiveSessionInfo — info sesi aktif untuk CoA disconnect
+type ActiveSessionInfo struct {
+	AcctSessionID    string
+	NASIPAddress     string
+	CallingStationID string
+	UserName         string
+}
+
+// GetActiveSessionsForUser — sesi aktif milik satu user (untuk CoA revoke)
+func (s *RadiusService) GetActiveSessionsForUser(username string) ([]ActiveSessionInfo, error) {
+	rows, err := s.db.Query(
+		"SELECT acctsessionid, nasipaddress::text, COALESCE(callingstationid,''), username FROM radacct WHERE acctstoptime IS NULL AND username = $1",
+		username)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var sessions []ActiveSessionInfo
+	for rows.Next() {
+		var info ActiveSessionInfo
+		if err := rows.Scan(&info.AcctSessionID, &info.NASIPAddress, &info.CallingStationID, &info.UserName); err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, info)
+	}
+	return sessions, rows.Err()
+}

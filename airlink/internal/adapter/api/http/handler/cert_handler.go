@@ -16,10 +16,11 @@ import (
 type CertHandler struct {
 	certSvc *service.CertService
 	store   *service.CertStore
+	radius  *service.RadiusService
 }
 
-func NewCertHandler(certSvc *service.CertService, store *service.CertStore) *CertHandler {
-	return &CertHandler{certSvc: certSvc, store: store}
+func NewCertHandler(certSvc *service.CertService, store *service.CertStore, radius *service.RadiusService) *CertHandler {
+	return &CertHandler{certSvc: certSvc, store: store, radius: radius}
 }
 
 func (h *CertHandler) ready(c *gin.Context) bool {
@@ -117,4 +118,58 @@ func (h *CertHandler) GetPackage(c *gin.Context) {
 	}
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"filename": username + "-" + device + ".p12", "p12_base64": base64.StdEncoding.EncodeToString(data), "password": password}})
+}
+
+// RevokeCert DELETE /api/airlink/certs/:username/:device
+// Mencabut sertifikat (CRL) + best-effort CoA disconnect + laporan status terpisah.
+func (h *CertHandler) RevokeCert(c *gin.Context) {
+	if !h.ready(c) {
+		return
+	}
+	username, device := c.Param("username"), c.Param("device")
+
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	_ = c.ShouldBindJSON(&req)
+
+	// 1. Revoke cert di PKI (CRL)
+	if err := h.certSvc.Revoke(username, device, req.Reason); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "revoke sertifikat gagal", "details": err.Error()})
+		return
+	}
+
+	// 2. Best-effort CoA: cari sesi aktif user, coba putus masing-masing
+	disconnectResults := []gin.H{}
+	sessions, sessErr := h.radius.GetActiveSessionsForUser(username)
+	if sessErr != nil {
+		disconnectResults = append(disconnectResults, gin.H{"error": "gagal mencari sesi aktif: " + sessErr.Error()})
+	} else {
+		for _, sess := range sessions {
+			coaErr := h.certSvc.DisconnectSession(sess.UserName, sess.AcctSessionID, sess.NASIPAddress, sess.CallingStationID)
+			entry := gin.H{
+				"session_id":   sess.AcctSessionID,
+				"nas_ip":       sess.NASIPAddress,
+				"mac_address":  sess.CallingStationID,
+				"disconnected": coaErr == nil,
+			}
+			if coaErr != nil {
+				entry["error"] = coaErr.Error()
+			}
+			disconnectResults = append(disconnectResults, entry)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": gin.H{
+			"username":     username,
+			"device":       device,
+			"revoked_by":   actorID(c),
+			"reason":       req.Reason,
+			"revoked_at":   time.Now().Format(time.RFC3339),
+			"cert_revoked": true,
+			"disconnects":  disconnectResults,
+		},
+		"message": "Sertifikat dicabut. Sesi aktif diputus best-effort — periksa status masing-masing sesi.",
+	})
 }

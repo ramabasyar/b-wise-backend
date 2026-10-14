@@ -72,6 +72,7 @@ func SetupWithLogger(
 			airlink.GET("/certs", permCheck.RequirePermission("wifi.cert.download"), handlers.Cert.ListCerts)
 			airlink.POST("/certs", permCheck.RequirePermission("wifi.cert.issue"), handlers.Cert.IssueCert)
 			airlink.GET("/certs/:username/:device/package", permCheck.RequirePermission("wifi.cert.download"), handlers.Cert.GetPackage)
+			airlink.DELETE("/certs/:username/:device", permCheck.RequirePermission("wifi.cert.revoke"), handlers.Cert.RevokeCert)
 		}
 	}
 

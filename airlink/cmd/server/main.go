@@ -70,6 +70,7 @@ func main() {
 	if cfg.RadiusSSH.Host != "" && cfg.RadiusSSH.User != "" {
 		certSvc = service.NewCertService(cfg.RadiusSSH.User, cfg.RadiusSSH.Host)
 		zapLogger.Info("[startup] cert service ready (SSH to " + cfg.RadiusSSH.Host + ")")
+		certSvc.SetCoaSecret(os.Getenv("RADIUS_COA_SECRET"))
 	}
 	var certStore *service.CertStore
 	if os.Getenv("CERT_DB_DSN") != "" && os.Getenv("AIRLINK_ENCRYPTION_KEY") != "" {
@@ -84,7 +85,7 @@ func main() {
 
 	handlers := &router.Handlers{
 		Airlink: handler.NewAirlinkHandler(radiusSvc),
-		Cert:    handler.NewCertHandler(certSvc, certStore),
+		Cert:    handler.NewCertHandler(certSvc, certStore, radiusSvc),
 	}
 
 	srv := router.SetupWithLogger(
