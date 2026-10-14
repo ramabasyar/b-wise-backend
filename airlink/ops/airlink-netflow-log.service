@@ -1,0 +1,14 @@
+[Unit]
+Description=Airlink NetFlow JSON to PostgreSQL
+After=network-online.target airlink-netflow.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/airlink-dns.env
+ExecStart=/usr/bin/python3 /usr/local/bin/netflow-log-collector.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

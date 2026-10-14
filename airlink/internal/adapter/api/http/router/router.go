@@ -13,6 +13,7 @@ import (
 type Handlers struct {
 	Airlink *handler.AirlinkHandler
 	Cert    *handler.CertHandler
+	DNS     *handler.DNSHandler
 }
 
 func SetupWithLogger(
@@ -75,6 +76,16 @@ func SetupWithLogger(
 			airlink.POST("/certs", permCheck.RequirePermission("wifi.cert.issue"), handlers.Cert.IssueCert)
 			airlink.GET("/certs/:username/:device/package", permCheck.RequirePermission("wifi.cert.download"), handlers.Cert.GetPackage)
 			airlink.DELETE("/certs/:username/:device", permCheck.RequirePermission("wifi.cert.revoke"), handlers.Cert.RevokeCert)
+
+			// DNS management and network telemetry (IT only).
+			airlink.GET("/dns/records", jwksAuth.RequireUser(), permCheck.RequirePermission("dns.records.read"), handlers.DNS.List)
+			airlink.POST("/dns/records", jwksAuth.RequireUser(), permCheck.RequirePermission("dns.records.manage"), handlers.DNS.Save)
+			airlink.PUT("/dns/records/:id", jwksAuth.RequireUser(), permCheck.RequirePermission("dns.records.manage"), handlers.DNS.Save)
+			airlink.DELETE("/dns/records/:id", jwksAuth.RequireUser(), permCheck.RequirePermission("dns.records.manage"), handlers.DNS.Delete)
+			airlink.POST("/dns/sync", jwksAuth.RequireUser(), permCheck.RequirePermission("dns.records.manage"), handlers.DNS.Sync)
+			airlink.GET("/activity/dns", jwksAuth.RequireUser(), permCheck.RequirePermission("network.activity.read"), handlers.DNS.Queries)
+			airlink.GET("/activity/netflow", jwksAuth.RequireUser(), permCheck.RequirePermission("network.activity.read"), handlers.DNS.Flows)
+			airlink.GET("/activity/summary", jwksAuth.RequireUser(), permCheck.RequirePermission("network.activity.read"), handlers.DNS.Summary)
 		}
 	}
 

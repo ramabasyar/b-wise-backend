@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+set -a
+. /etc/airlink-dns.env
+exec /usr/bin/python3 /usr/local/sbin/sync-dns-overrides.py

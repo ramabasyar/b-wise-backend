@@ -26,6 +26,13 @@ permissions:
   - permission: wifi.cert.manage
     description: Kelola limit sertifikat per user
 
+  - permission: dns.records.read
+    description: Lihat record DNS internal Binawan
+  - permission: dns.records.manage
+    description: Tambah, ubah, hapus dan sinkronkan record DNS internal
+  - permission: network.activity.read
+    description: Lihat log query DNS dan NetFlow jaringan
+
 menu:
   - label: "Airlink"
     path: /dashboard/airlink
@@ -57,3 +64,13 @@ menu:
         icon: ShieldCheck
         required_permission: wifi.cert.download
         sort_order: 5
+      - label: DNS Management
+        path: /dashboard/airlink/dns
+        icon: Globe
+        required_permission: dns.records.read
+        sort_order: 6
+      - label: Aktivitas Jaringan
+        path: /dashboard/airlink/activity
+        icon: Activity
+        required_permission: network.activity.read
+        sort_order: 7

@@ -1,0 +1,13 @@
+[Unit]
+Description=Airlink NetFlow v5/v9 collector (pmacct)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/nfacctd -l 2055 -c src_host,dst_host,src_port,dst_port,proto -P print -r 60 -O json -o /var/log/airlink-netflow.jsonl -A
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

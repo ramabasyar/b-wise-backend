@@ -82,10 +82,25 @@ func main() {
 			zapLogger.Info("[startup] encrypted certificate store connected")
 		}
 	}
+	var dnsSvc *service.DNSService
+	if dsn := os.Getenv("DNS_DB_DSN"); dsn != "" {
+		sshTarget := ""
+		if cfg.RadiusSSH.Host != "" && cfg.RadiusSSH.User != "" {
+			sshTarget = cfg.RadiusSSH.User + "@" + cfg.RadiusSSH.Host
+		}
+		dnsSvc, err = service.NewDNSService(dsn, sshTarget)
+		if err != nil {
+			zapLogger.Info(fmt.Sprintf("[startup] DNS DB unavailable: %v", err))
+		} else {
+			defer dnsSvc.Close()
+			zapLogger.Info("[startup] DNS DB connected")
+		}
+	}
 
 	handlers := &router.Handlers{
 		Airlink: handler.NewAirlinkHandler(radiusSvc),
 		Cert:    handler.NewCertHandler(certSvc, certStore, radiusSvc),
+		DNS:     handler.NewDNSHandler(dnsSvc, radiusSvc),
 	}
 
 	srv := router.SetupWithLogger(

@@ -3,6 +3,7 @@ package service
 import (
 	"database/sql"
 	"fmt"
+	"net"
 	"time"
 
 	"airlink/internal/domain"
@@ -29,6 +30,19 @@ func NewRadiusService(dsn string) (*RadiusService, error) {
 }
 
 func (s *RadiusService) Close() error { return s.db.Close() }
+
+// FindUserForIPAt associates an observation with the accounting session valid then.
+func (s *RadiusService) FindUserForIPAt(ip string, at time.Time) (string, error) {
+	if net.ParseIP(ip) == nil {
+		return "", nil
+	}
+	var username string
+	err := s.db.QueryRow(`SELECT username FROM radacct WHERE framedipaddress=$1::inet AND acctstarttime <= $2 AND (acctstoptime IS NULL OR acctstoptime >= $2) ORDER BY acctstarttime DESC LIMIT 1`, ip, at).Scan(&username)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return username, err
+}
 
 // GetActiveSessions — sesi WiFi yang masih aktif (acctstoptime IS NULL)
 func (s *RadiusService) GetActiveSessions(username string, limit, offset int) ([]domain.RadAcct, int64, error) {
