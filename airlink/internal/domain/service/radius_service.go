@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"airlink/internal/domain"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 // RadiusService — read-only access ke DB radius FreeRADIUS
@@ -14,7 +15,7 @@ type RadiusService struct {
 }
 
 func NewRadiusService(dsn string) (*RadiusService, error) {
-	db, err := sql.Open("postgres", dsn)
+	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("radius db connect: %w", err)
 	}
