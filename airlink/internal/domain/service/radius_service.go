@@ -223,3 +223,98 @@ func (s *RadiusService) GetActiveSessionsForUser(username string) ([]ActiveSessi
 	}
 	return sessions, rows.Err()
 }
+
+// UsageSummary — ringkasan penggunaan bandwidth per user
+type UsageSummary struct {
+	UserName      string  `json:"username"`
+	TotalUpload   int64   `json:"total_upload_bytes"`
+	TotalDownload int64   `json:"total_download_bytes"`
+	TotalSessions int     `json:"total_sessions"`
+	TotalDuration int64   `json:"total_duration_sec"`
+	AvgSpeedMbps  float64 `json:"avg_speed_mbps"`
+}
+
+// UsageSession — detail bandwidth per sesi
+type UsageSession struct {
+	AcctSessionID string     `json:"acct_session_id"`
+	UserName      string     `json:"username"`
+	UploadBytes   int64      `json:"upload_bytes"`
+	DownloadBytes int64      `json:"download_bytes"`
+	DurationSec   int64      `json:"duration_sec"`
+	AvgSpeedMbps  float64    `json:"avg_speed_mbps"`
+	StartTime     time.Time  `json:"start_time"`
+	StopTime      *time.Time `json:"stop_time,omitempty"`
+	NASIPAddress  string     `json:"nas_ip"`
+}
+
+// GetUsageSummary — agregat bandwidth per user (top N)
+func (s *RadiusService) GetUsageSummary(startTime, endTime time.Time, limit int) ([]UsageSummary, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	query := `
+		SELECT username,
+			COALESCE(SUM(acctinputoctets), 0) as total_up,
+			COALESCE(SUM(acctoutputoctets), 0) as total_down,
+			COUNT(*) as sessions,
+			COALESCE(SUM(acctsessiontime), 0) as total_dur
+		FROM radacct
+		WHERE acctstarttime >= $1 AND acctstarttime <= $2
+		GROUP BY username
+		ORDER BY (COALESCE(SUM(acctinputoctets), 0) + COALESCE(SUM(acctoutputoctets), 0)) DESC
+		LIMIT $3`
+	rows, err := s.db.Query(query, startTime, endTime, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var results []UsageSummary
+	for rows.Next() {
+		var u UsageSummary
+		if err := rows.Scan(&u.UserName, &u.TotalUpload, &u.TotalDownload, &u.TotalSessions, &u.TotalDuration); err != nil {
+			return nil, err
+		}
+		if u.TotalDuration > 0 {
+			totalBytes := float64(u.TotalUpload + u.TotalDownload)
+			u.AvgSpeedMbps = (totalBytes * 8) / (float64(u.TotalDuration) * 1000000)
+		}
+		results = append(results, u)
+	}
+	return results, rows.Err()
+}
+
+// GetUserUsageSessions — detail bandwidth per sesi untuk satu user
+func (s *RadiusService) GetUserUsageSessions(username string, startTime, endTime time.Time, limit int) ([]UsageSession, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	query := `
+		SELECT acctsessionid, username,
+			COALESCE(acctinputoctets, 0),
+			COALESCE(acctoutputoctets, 0),
+			COALESCE(acctsessiontime, 0),
+			acctstarttime, acctstoptime, nasipaddress::text
+		FROM radacct
+		WHERE username = $1 AND acctstarttime >= $2 AND acctstarttime <= $3
+		ORDER BY acctstarttime DESC
+		LIMIT $4`
+	rows, err := s.db.Query(query, username, startTime, endTime, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var results []UsageSession
+	for rows.Next() {
+		var u UsageSession
+		if err := rows.Scan(&u.AcctSessionID, &u.UserName, &u.UploadBytes, &u.DownloadBytes,
+			&u.DurationSec, &u.StartTime, &u.StopTime, &u.NASIPAddress); err != nil {
+			return nil, err
+		}
+		if u.DurationSec > 0 {
+			totalBytes := float64(u.UploadBytes + u.DownloadBytes)
+			u.AvgSpeedMbps = (totalBytes * 8) / (float64(u.DurationSec) * 1000000)
+		}
+		results = append(results, u)
+	}
+	return results, rows.Err()
+}

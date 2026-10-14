@@ -67,6 +67,8 @@ func SetupWithLogger(
 			airlink.GET("/sessions/active", permCheck.RequirePermission("wifi.sessions.read"), handlers.Airlink.GetActiveSessions)
 			airlink.GET("/sessions/history", permCheck.RequirePermission("wifi.sessions.read"), handlers.Airlink.GetSessionHistory)
 			airlink.GET("/auth-logs", permCheck.RequirePermission("wifi.authlogs.read"), handlers.Airlink.GetAuthLogs)
+			airlink.GET("/usage", permCheck.RequirePermission("wifi.sessions.read"), handlers.Airlink.GetUsageSummary)
+			airlink.GET("/usage/:username/sessions", permCheck.RequirePermission("wifi.sessions.read"), handlers.Airlink.GetUserUsageSessions)
 
 			// IT-only: issue dan unduh ulang dengan audit; revoke menunggu CoA.
 			airlink.GET("/certs", permCheck.RequirePermission("wifi.cert.download"), handlers.Cert.ListCerts)

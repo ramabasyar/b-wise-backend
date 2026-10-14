@@ -47,8 +47,13 @@ menu:
         icon: ScrollText
         required_permission: wifi.authlogs.read
         sort_order: 3
+      - label: Penggunaan Data
+        path: /dashboard/airlink/usage
+        icon: BarChart3
+        required_permission: wifi.sessions.read
+        sort_order: 4
       - label: Sertifikat WiFi
         path: /dashboard/airlink/certificates
         icon: ShieldCheck
         required_permission: wifi.cert.download
-        sort_order: 4
+        sort_order: 5
