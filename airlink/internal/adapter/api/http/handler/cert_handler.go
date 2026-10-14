@@ -1,106 +1,120 @@
 package handler
 
 import (
+	"database/sql"
+	"encoding/base64"
+	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
+	"airlink/internal/adapter/api/http/middleware"
 	"airlink/internal/domain/service"
 	"github.com/gin-gonic/gin"
 )
 
 type CertHandler struct {
 	certSvc *service.CertService
+	store   *service.CertStore
 }
 
-func NewCertHandler(certSvc *service.CertService) *CertHandler {
-	return &CertHandler{certSvc: certSvc}
+func NewCertHandler(certSvc *service.CertService, store *service.CertStore) *CertHandler {
+	return &CertHandler{certSvc: certSvc, store: store}
 }
 
-// IssueCert POST /api/airlink/certs
-// Body: {"username": "btest", "device": "laptop"}
+func (h *CertHandler) ready(c *gin.Context) bool {
+	if middleware.IsServiceToken(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "sertifikat hanya dapat dikelola operator IT"})
+		return false
+	}
+	if h.certSvc == nil || h.store == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "pengelolaan sertifikat belum dikonfigurasi"})
+		return false
+	}
+	return true
+}
+
+func actorID(c *gin.Context) string {
+	if id, ok := middleware.GetUserID(c); ok {
+		return id
+	}
+	return "unknown"
+}
+
+func (h *CertHandler) ListCerts(c *gin.Context) {
+	if !h.ready(c) {
+		return
+	}
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	items, err := h.store.List(c.Request.Context(), c.Query("username"), limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal memuat sertifikat"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": items})
+}
+
 func (h *CertHandler) IssueCert(c *gin.Context) {
+	if !h.ready(c) {
+		return
+	}
 	var req struct {
 		Username string `json:"username" binding:"required"`
 		Device   string `json:"device" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request", "details": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "username dan device wajib diisi"})
 		return
 	}
-
-	// Actor = user yang login (dari JWKS auth middleware)
-	actor, _ := c.Get("username")
-	actorStr, _ := actor.(string)
-
+	exists, err := h.store.Exists(c.Request.Context(), req.Username, req.Device)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal memeriksa sertifikat"})
+		return
+	}
+	if exists {
+		c.JSON(http.StatusConflict, gin.H{"error": "sertifikat aktif untuk perangkat ini sudah ada"})
+		return
+	}
 	result, err := h.certSvc.Issue(req.Username, req.Device)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "issue failed", "details": err.Error()})
+		c.JSON(http.StatusBadGateway, gin.H{"error": "penerbitan sertifikat gagal"})
 		return
 	}
-
-	// Jangan expose password di response — kirim via jalur terpisah
-	c.JSON(http.StatusCreated, gin.H{
-		"data": gin.H{
-			"username":    result.Username,
-			"device_name": result.DeviceName,
-			"total_certs": result.Total,
-			"issued_by":   actorStr,
-			"issued_at":   time.Now().Format(time.RFC3339),
-		},
-		"message": "Sertifikat berhasil diterbitkan. Gunakan endpoint download untuk mengambil file .p12",
-	})
-}
-
-// DownloadP12 GET /api/airlink/certs/:username/:device/download
-func (h *CertHandler) DownloadP12(c *gin.Context) {
-	username := c.Param("username")
-	device := c.Param("device")
-	if username == "" || device == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "username dan device required"})
-		return
-	}
-
-	remotePath := "/var/lib/radius-certs/" + username + "/" + device + ".p12"
-	data, err := h.certSvc.FetchP12(remotePath)
+	packageData, err := h.certSvc.FetchP12(req.Username, req.Device)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "certificate not found", "details": err.Error()})
+		c.JSON(http.StatusBadGateway, gin.H{"error": "paket sertifikat tidak dapat diambil"})
 		return
 	}
-
-	c.Header("Content-Disposition", "attachment; filename="+username+"-"+device+".p12")
-	c.Data(http.StatusOK, "application/x-pkcs12", data)
+	serial, expiresAt, err := h.certSvc.CertMetadata(req.Username, req.Device)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "metadata sertifikat tidak dapat dibaca"})
+		return
+	}
+	id, err := h.store.Save(c.Request.Context(), req.Username, req.Device, serial, expiresAt, packageData, result.P12Pass, actorID(c))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "sertifikat terbit tetapi pencatatan gagal; hubungi administrator RADIUS"})
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusCreated, gin.H{"data": gin.H{"id": id, "username": result.Username, "device_name": result.DeviceName, "cert_serial": serial, "expires_at": expiresAt, "total_certs": result.Total, "issued_by": actorID(c), "issued_at": time.Now().Format(time.RFC3339)}})
 }
 
-// RevokeCert DELETE /api/airlink/certs/:username/:device
-func (h *CertHandler) RevokeCert(c *gin.Context) {
-	username := c.Param("username")
-	device := c.Param("device")
-	if username == "" || device == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "username dan device required"})
+// GetPackage menyerahkan P12 dan password via HTTPS ke operator IT yang berizin.
+func (h *CertHandler) GetPackage(c *gin.Context) {
+	if !h.ready(c) {
 		return
 	}
-
-	var req struct {
-		Reason string `json:"reason"`
-	}
-	_ = c.ShouldBindJSON(&req) // optional body
-
-	actor, _ := c.Get("username")
-	actorStr, _ := actor.(string)
-
-	if err := h.certSvc.Revoke(username, device, req.Reason); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "revoke failed", "details": err.Error()})
+	username, device := c.Param("username"), c.Param("device")
+	data, password, err := h.store.Package(c.Request.Context(), username, device, actorID(c))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "paket sertifikat tidak tersedia"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "paket sertifikat tidak dapat dibuka"})
 		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"data": gin.H{
-			"username":   username,
-			"device":     device,
-			"revoked_by": actorStr,
-			"reason":     req.Reason,
-			"revoked_at": time.Now().Format(time.RFC3339),
-		},
-		"message": "Sertifikat dicabut. Sesi WiFi aktif belum diputus otomatis; lakukan pemutusan melalui UniFi.",
-	})
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"filename": username + "-" + device + ".p12", "p12_base64": base64.StdEncoding.EncodeToString(data), "password": password}})
 }

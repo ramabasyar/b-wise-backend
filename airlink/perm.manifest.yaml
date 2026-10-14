@@ -47,3 +47,8 @@ menu:
         icon: ScrollText
         required_permission: wifi.authlogs.read
         sort_order: 3
+      - label: Sertifikat WiFi
+        path: /dashboard/airlink/certificates
+        icon: ShieldCheck
+        required_permission: wifi.cert.download
+        sort_order: 4

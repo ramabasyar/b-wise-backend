@@ -68,8 +68,10 @@ func SetupWithLogger(
 			airlink.GET("/sessions/history", permCheck.RequirePermission("wifi.sessions.read"), handlers.Airlink.GetSessionHistory)
 			airlink.GET("/auth-logs", permCheck.RequirePermission("wifi.authlogs.read"), handlers.Airlink.GetAuthLogs)
 
-			// Certificate endpoints remain disabled until encrypted re-download,
-			// audit, and NAS session disconnect are implemented and verified.
+			// IT-only: issue dan unduh ulang dengan audit; revoke menunggu CoA.
+			airlink.GET("/certs", permCheck.RequirePermission("wifi.cert.download"), handlers.Cert.ListCerts)
+			airlink.POST("/certs", permCheck.RequirePermission("wifi.cert.issue"), handlers.Cert.IssueCert)
+			airlink.GET("/certs/:username/:device/package", permCheck.RequirePermission("wifi.cert.download"), handlers.Cert.GetPackage)
 		}
 	}
 

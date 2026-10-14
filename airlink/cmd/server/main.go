@@ -10,13 +10,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"airlink/internal/adapter/api/http/handler"
 	"airlink/internal/adapter/api/http/router"
 	"airlink/internal/adapter/config"
 	"airlink/internal/adapter/logger"
 	"airlink/internal/domain/service"
 	"airlink/internal/service/permissionsync"
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
@@ -71,10 +71,20 @@ func main() {
 		certSvc = service.NewCertService(cfg.RadiusSSH.User, cfg.RadiusSSH.Host)
 		zapLogger.Info("[startup] cert service ready (SSH to " + cfg.RadiusSSH.Host + ")")
 	}
+	var certStore *service.CertStore
+	if os.Getenv("CERT_DB_DSN") != "" && os.Getenv("AIRLINK_ENCRYPTION_KEY") != "" {
+		certStore, err = service.NewCertStore(os.Getenv("CERT_DB_DSN"), os.Getenv("AIRLINK_ENCRYPTION_KEY"))
+		if err != nil {
+			zapLogger.Info(fmt.Sprintf("[startup] certificate store unavailable: %v", err))
+		} else {
+			defer certStore.Close()
+			zapLogger.Info("[startup] encrypted certificate store connected")
+		}
+	}
 
 	handlers := &router.Handlers{
 		Airlink: handler.NewAirlinkHandler(radiusSvc),
-		Cert:    handler.NewCertHandler(certSvc),
+		Cert:    handler.NewCertHandler(certSvc, certStore),
 	}
 
 	srv := router.SetupWithLogger(

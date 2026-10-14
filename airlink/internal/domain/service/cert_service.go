@@ -4,19 +4,20 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
 
 // CertService — menerbitkan & mencabut sertifikat WiFi via SSH ke host FreeRADIUS
 type CertService struct {
-	sshHost  string // user@host
-	certTTL  time.Duration
+	sshHost string // user@host
+	certTTL time.Duration
 }
 
 func NewCertService(sshUser, sshHost string) *CertService {
 	return &CertService{
-		sshHost:  sshUser + "@" + sshHost,
+		sshHost: sshUser + "@" + sshHost,
 		certTTL: 1460 * 24 * time.Hour, // 4 tahun
 	}
 }
@@ -35,13 +36,7 @@ type IssueResult struct {
 // Issue — terbitkan sertifikat baru via SSH
 // Menjalankan: sudo /usr/local/sbin/issue-wifi-cert.sh <username> <device>
 func (s *CertService) Issue(username, device string) (*IssueResult, error) {
-	if username == "" || device == "" {
-		return nil, fmt.Errorf("username dan device wajib diisi")
-	}
-	// Sanitize: hanya alphanumeric, dash, underscore, titik
-	username = sanitizeInput(username)
-	device = sanitizeInput(device)
-	if username == "" || device == "" {
+	if !validUsername(username) || !validDevice(device) {
 		return nil, fmt.Errorf("input tidak valid")
 	}
 
@@ -88,17 +83,18 @@ func (s *CertService) Issue(username, device string) (*IssueResult, error) {
 		}
 	}
 
+	if !result.OK || result.P12Path == "" || result.P12Pass == "" {
+		return nil, fmt.Errorf("penerbitan sertifikat tidak menghasilkan paket yang lengkap")
+	}
 	return result, nil
 }
 
 // Revoke — cabut sertifikat via SSH
 // Menjalankan: sudo /usr/local/sbin/revoke-wifi-cert.sh <username> <device>
 func (s *CertService) Revoke(username, device, reason string) error {
-	if username == "" || device == "" {
-		return fmt.Errorf("username dan device wajib diisi")
+	if !validUsername(username) || !validDevice(device) {
+		return fmt.Errorf("input tidak valid")
 	}
-	username = sanitizeInput(username)
-	device = sanitizeInput(device)
 
 	cmd := exec.Command("ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
 		s.sshHost,
@@ -119,27 +115,57 @@ func (s *CertService) Revoke(username, device, reason string) error {
 	return nil
 }
 
-// FetchP12 — ambil file .p12 dari server RADIUS via SCP
-func (s *CertService) FetchP12(remotePath string) ([]byte, error) {
-	if !strings.HasPrefix(remotePath, "/var/lib/radius-certs/") {
-		return nil, fmt.Errorf("path tidak valid: harus di bawah /var/lib/radius-certs/")
+// FetchP12 — file root-only dibaca via sudo SSH, tidak melalui SCP user freerad.
+func (s *CertService) FetchP12(username, device string) ([]byte, error) {
+	if !validUsername(username) || !validDevice(device) {
+		return nil, fmt.Errorf("input tidak valid")
 	}
-	cmd := exec.Command("scp", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
-		s.sshHost+":"+remotePath, "/dev/stdout")
+	remotePath := "/var/lib/radius-certs/" + username + "/" + device + ".p12"
+	cmd := exec.Command("ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+		s.sshHost, "sudo cat "+remotePath)
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("scp fetch: %v", err)
+		return nil, fmt.Errorf("certificate fetch: %v", err)
+	}
+	if stdout.Len() == 0 || stdout.Len() > 1024*1024 {
+		return nil, fmt.Errorf("ukuran paket sertifikat tidak valid")
 	}
 	return stdout.Bytes(), nil
 }
 
-func sanitizeInput(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
-			b.WriteRune(r)
+var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9@_-]{0,127}$`)
+var devicePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
+
+func validUsername(s string) bool { return usernamePattern.MatchString(s) }
+func validDevice(s string) bool   { return devicePattern.MatchString(s) }
+
+func (s *CertService) CertMetadata(username, device string) (string, time.Time, error) {
+	if !validUsername(username) || !validDevice(device) {
+		return "", time.Time{}, fmt.Errorf("input tidak valid")
+	}
+	path := "/var/lib/radius-certs/" + username + "/" + device + ".crt"
+	cmd := exec.Command("ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+		s.sshHost, "sudo openssl x509 -in "+path+" -noout -serial -enddate")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	var serial string
+	var expiry time.Time
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, "serial=") {
+			serial = strings.TrimPrefix(line, "serial=")
+		}
+		if strings.HasPrefix(line, "notAfter=") {
+			expiry, err = time.Parse("Jan _2 15:04:05 2006 MST", strings.TrimPrefix(line, "notAfter="))
+			if err != nil {
+				return "", time.Time{}, err
+			}
 		}
 	}
-	return b.String()
+	if serial == "" || expiry.IsZero() {
+		return "", time.Time{}, fmt.Errorf("metadata sertifikat tidak lengkap")
+	}
+	return serial, expiry, nil
 }
