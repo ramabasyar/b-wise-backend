@@ -1,0 +1,32 @@
+server:
+  port: 8087
+  host: "0.0.0.0"
+  read_timeout: 30s
+  write_timeout: 30s
+  shutdown_timeout: 10s
+
+database:
+  host: "127.0.0.1"
+  port: 5432
+  user: "airlink"
+  password: ""
+  dbname: "airlink"
+  sslmode: "disable"
+
+radius_db:
+  dsn: ""
+
+radius_ssh:
+  host: "10.123.120.25"
+  user: "freerad"
+
+sso:
+  url: "http://127.0.0.1:8080"
+  service_name: "airlink"
+  service_client_id: "airlink"
+  service_client_secret: ""
+  permission_service_url: "http://127.0.0.1:8082"
+
+logger:
+  level: "info"
+  format: "json"

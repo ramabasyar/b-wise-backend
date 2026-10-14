@@ -1,0 +1,49 @@
+# perm.manifest.yaml — sumber kebenaran permissions & menu service ini.
+# Self-sync otomatis ke Permission Service setiap kali service boot (idempotent).
+# Roles dibuat manual di Permission Service admin setelah sync pertama.
+service:
+  name: airlink
+  description: "Airlink — portal pengelolaan jaringan Binawan: WiFi WPA2-Enterprise (EAP-TLS), monitoring sesi, & infrastruktur RADIUS"
+  base_url: ""
+  sync_enabled: true
+
+permissions:
+  # Observability (Operator & Admin)
+  - permission: wifi.health.read
+    description: Lihat status kesehatan RADIUS
+  - permission: wifi.sessions.read
+    description: Lihat sesi WiFi aktif & riwayat koneksi
+  - permission: wifi.authlogs.read
+    description: Lihat log autentikasi (radpostauth)
+
+  # Admin PKI (sensitive)
+  - permission: wifi.cert.issue
+    description: Terbitkan sertifikat WiFi utk user (maks 5 device)
+  - permission: wifi.cert.download
+    description: Unduh / unduh ulang paket .p12
+  - permission: wifi.cert.revoke
+    description: Cabut sertifikat dan putuskan sesi aktif
+  - permission: wifi.cert.manage
+    description: Kelola limit sertifikat per user
+
+menu:
+  - label: "Airlink"
+    path: /dashboard/airlink
+    icon: Wifi
+    sort_order: 35
+    children:
+      - label: Ringkasan
+        path: /dashboard/airlink
+        icon: Activity
+        required_permission: wifi.health.read
+        sort_order: 1
+      - label: Sesi Aktif
+        path: /dashboard/airlink/sessions
+        icon: Radio
+        required_permission: wifi.sessions.read
+        sort_order: 2
+      - label: Log Autentikasi
+        path: /dashboard/airlink/auth-logs
+        icon: ScrollText
+        required_permission: wifi.authlogs.read
+        sort_order: 3
