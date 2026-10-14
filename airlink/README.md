@@ -5,13 +5,18 @@ Portal pengelolaan jaringan Binawan — service B-Wise untuk WiFi WPA2-Enterpris
 ## Status (14 Okt 2026)
 - **Tahap A+B (pintu masuk + observability)** — backend staging port 8090, frontend staging tersedia
 - Rilis awal **khusus IT**; self-service staf menyusul
-- Sertifikat harus bisa diunduh ulang dan revoke harus memutus sesi aktif; **endpoint cert belum dibuka** sampai keduanya teruji
+- Endpoint terbitkan, daftar, dan unduh ulang sertifikat sudah tersedia dengan paket+password terenkripsi di DB Airlink; **revoke dari portal belum dibuka** sampai CoA UniFi dan accounting stop teruji
 
 ## Fitur (rilis pertama)
 - `GET /api/airlink/health` — status kesehatan RADIUS (DB, sesi aktif, auth terakhir)
 - `GET /api/airlink/sessions/active` — sesi WiFi aktif (filter by username)
 - `GET /api/airlink/sessions/history` — riwayat sesi (filter by username, start, end)
 - `GET /api/airlink/auth-logs` — log autentikasi radpostauth
+- `GET /api/airlink/certs` — metadata sertifikat yang diterbitkan Airlink (IT)
+- `POST /api/airlink/certs` — penerbitan cert oleh IT
+- `GET /api/airlink/certs/:username/:device/package` — unduh ulang paket dan password (diaudit)
+
+Sertifikat yang diterbitkan sebelum Airlink belum memiliki password di penyimpanan terenkripsi dan tidak dapat diunduh ulang. Jaga backup terenkripsi `.env` (terutama `AIRLINK_ENCRYPTION_KEY`); kehilangan kunci berarti paket lama tidak dapat dibuka. Rute revoke sengaja belum diaktifkan: CRL saja tidak memutus sesi WiFi yang sudah aktif.
 
 ## Menjalankan (dev)
 ```bash
