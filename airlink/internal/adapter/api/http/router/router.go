@@ -64,6 +64,11 @@ func SetupWithLogger(
 	{
 		airlink := api.Group("/airlink")
 		{
+			// Self-service: identitas selalu diambil dari SSO, bukan dari parameter klien.
+			airlink.GET("/certs/me", jwksAuth.RequireUser(), handlers.Cert.ListMyCerts)
+			airlink.POST("/certs/me", jwksAuth.RequireUser(), handlers.Cert.IssueMyCert)
+			airlink.GET("/certs/me/:device/package", jwksAuth.RequireUser(), handlers.Cert.GetMyPackage)
+
 			// Observability (Operator + Admin)
 			airlink.GET("/health", permCheck.RequirePermission("wifi.health.read"), handlers.Airlink.GetHealth)
 			airlink.GET("/sessions/active", permCheck.RequirePermission("wifi.sessions.read"), handlers.Airlink.GetActiveSessions)

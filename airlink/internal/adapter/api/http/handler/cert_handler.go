@@ -18,10 +18,11 @@ type CertHandler struct {
 	certSvc *service.CertService
 	store   *service.CertStore
 	radius  *service.RadiusService
+	ssoURL  string
 }
 
-func NewCertHandler(certSvc *service.CertService, store *service.CertStore, radius *service.RadiusService) *CertHandler {
-	return &CertHandler{certSvc: certSvc, store: store, radius: radius}
+func NewCertHandler(certSvc *service.CertService, store *service.CertStore, radius *service.RadiusService, ssoURL string) *CertHandler {
+	return &CertHandler{certSvc: certSvc, store: store, radius: radius, ssoURL: strings.TrimRight(ssoURL, "/")}
 }
 
 func (h *CertHandler) ready(c *gin.Context) bool {
@@ -69,7 +70,11 @@ func (h *CertHandler) IssueCert(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "username dan device wajib diisi"})
 		return
 	}
-	exists, err := h.store.Exists(c.Request.Context(), req.Username, req.Device)
+	h.issueFor(c, req.Username, req.Device)
+}
+
+func (h *CertHandler) issueFor(c *gin.Context, username, device string) {
+	exists, err := h.store.Exists(c.Request.Context(), username, device)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "gagal memeriksa sertifikat"})
 		return
@@ -78,22 +83,22 @@ func (h *CertHandler) IssueCert(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "sertifikat aktif untuk perangkat ini sudah ada"})
 		return
 	}
-	result, err := h.certSvc.Issue(req.Username, req.Device)
+	result, err := h.certSvc.Issue(username, device)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "penerbitan sertifikat gagal"})
 		return
 	}
-	packageData, err := h.certSvc.FetchP12(req.Username, req.Device)
+	packageData, err := h.certSvc.FetchP12(username, device)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "paket sertifikat tidak dapat diambil"})
 		return
 	}
-	serial, expiresAt, err := h.certSvc.CertMetadata(req.Username, req.Device)
+	serial, expiresAt, err := h.certSvc.CertMetadata(username, device)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "metadata sertifikat tidak dapat dibaca"})
 		return
 	}
-	id, err := h.store.Save(c.Request.Context(), req.Username, req.Device, serial, expiresAt, packageData, result.P12Pass, actorID(c))
+	id, err := h.store.Save(c.Request.Context(), username, device, serial, expiresAt, packageData, result.P12Pass, actorID(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "sertifikat terbit tetapi pencatatan gagal; hubungi administrator RADIUS"})
 		return
@@ -107,12 +112,15 @@ func (h *CertHandler) GetPackage(c *gin.Context) {
 	if !h.ready(c) {
 		return
 	}
+	h.packageFor(c, c.Param("username"), c.Param("device"))
+}
+
+func (h *CertHandler) packageFor(c *gin.Context, username, device string) {
 	platform := strings.ToLower(strings.TrimSpace(c.DefaultQuery("platform", "certificate")))
 	if !service.SupportedWiFiPlatform(platform) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "platform paket tidak didukung"})
 		return
 	}
-	username, device := c.Param("username"), c.Param("device")
 	data, password, err := h.store.Package(c.Request.Context(), username, device, actorID(c))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

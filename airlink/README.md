@@ -14,6 +14,10 @@ Portal pengelolaan jaringan Binawan — service B-Wise untuk WiFi WPA2-Enterpris
 - `GET /api/airlink/auth-logs` — log autentikasi radpostauth
 - `GET /api/airlink/certs` — metadata sertifikat yang diterbitkan Airlink (IT)
 - `POST /api/airlink/certs` — penerbitan cert oleh IT
+- `GET/POST /api/airlink/certs/me` — lihat dan terbitkan sertifikat perangkat sendiri; username diverifikasi ke SSO dari bearer token, klien hanya mengirim `device`
+- `GET /api/airlink/certs/me/:device/package?platform=...` — unduh ulang paket perangkat sendiri (diaudit); akses user lain ditolak secara desain
+- Username SSO dapat mengandung titik; validasi issuer pada host FreeRADIUS harus diselaraskan sebelum self-service live. Patch idempoten di `ops/allow-sso-username-dots.py` membuat backup dan hanya mengganti satu pola allowlist, tanpa menyimpan/menyalin rahasia CA ke repo.
+  Setelah repo backend di-pull pada Nakula: `ssh freerad@10.123.120.25 'sudo python3 -' < airlink/ops/allow-sso-username-dots.py`. Jalankan sebelum mengaktifkan binary Airlink baru.
 - `GET /api/airlink/certs/:username/:device/package` — unduh ulang P12 dan password (diaudit)
 - `GET /api/airlink/certs/:username/:device/package?platform=windows|macos|ios|android|linux` — ZIP khusus sertifikat user/perangkat; Windows berisi `install-wifi.bat`, PowerShell installer, profil EAP-TLS, dan CA. Platform lain berisi P12, CA, dan panduan yang sesuai. Password P12 diberikan terpisah dalam respons portal, tidak disimpan di ZIP.
 - `GET /api/airlink/dns/records` — daftar record PowerDNS

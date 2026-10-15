@@ -140,11 +140,13 @@ func (s *CertService) FetchP12(username, device string) ([]byte, error) {
 	return stdout.Bytes(), nil
 }
 
-var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9@_-]{0,127}$`)
+var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9@_.-]{0,127}$`)
 var devicePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 
 func validUsername(s string) bool { return usernamePattern.MatchString(s) }
 func validDevice(s string) bool   { return devicePattern.MatchString(s) }
+
+func ValidCertUsername(s string) bool { return validUsername(s) }
 
 func (s *CertService) CertMetadata(username, device string) (string, time.Time, error) {
 	if !validUsername(username) || !validDevice(device) {

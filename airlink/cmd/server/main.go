@@ -152,7 +152,7 @@ func main() {
 
 	handlers := &router.Handlers{
 		Airlink: handler.NewAirlinkHandler(radiusSvc),
-		Cert:    handler.NewCertHandler(certSvc, certStore, radiusSvc),
+		Cert:    handler.NewCertHandler(certSvc, certStore, radiusSvc, cfg.SSO.URL),
 		DNS:     handler.NewDNSHandler(dnsSvc, radiusSvc),
 		Policy:  handler.NewPolicyHandler(policySvc, radiusSvc),
 	}
