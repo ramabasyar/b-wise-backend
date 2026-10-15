@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"encoding/csv"
 	"errors"
+	"fmt"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -55,13 +57,15 @@ type LibraryHandler struct {
 	kiosks    *service.KioskAdminService
 	purposes  repository.VisitPurposeRepository
 	locations repository.LocationRepository
+	reports   *service.ReportService
 }
 
 func NewLibraryHandler(
 	m *service.MemberService, v *service.VisitService, g *service.GuestService,
 	k *service.KioskAdminService, p repository.VisitPurposeRepository, l repository.LocationRepository,
+	r *service.ReportService,
 ) *LibraryHandler {
-	return &LibraryHandler{members: m, visits: v, guests: g, kiosks: k, purposes: p, locations: l}
+	return &LibraryHandler{members: m, visits: v, guests: g, kiosks: k, purposes: p, locations: l, reports: r}
 }
 
 // ===== Anggota =====
@@ -348,3 +352,72 @@ func (h *LibraryHandler) ListKiosks(c *gin.Context) {
 }
 
 var _ = strconv.Itoa // jaga import strconv bila atoiDefault dipindah
+
+// ===== Laporan (F3) =====
+
+// ReportSummary — GET /api/library/v1/reports/summary?from=&to=
+func (h *LibraryHandler) ReportSummary(c *gin.Context) {
+	from, to, err := service.ParseRange(c.Query("from"), c.Query("to"))
+	if err != nil {
+		mapErr(c, err)
+		return
+	}
+	s, err := h.reports.Summary(from, to)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.Success(c, s)
+}
+
+// ReportTimeseries — GET /api/library/v1/reports/timeseries?from=&to=&g=hour|day
+func (h *LibraryHandler) ReportTimeseries(c *gin.Context) {
+	from, to, err := service.ParseRange(c.Query("from"), c.Query("to"))
+	if err != nil {
+		mapErr(c, err)
+		return
+	}
+	data, g, err := h.reports.Timeseries(from, to, c.Query("g"))
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.Success(c, gin.H{"granularity": g, "data": data})
+}
+
+// ReportBreakdown — GET /api/library/v1/reports/breakdown?dimension=&from=&to=
+func (h *LibraryHandler) ReportBreakdown(c *gin.Context) {
+	from, to, err := service.ParseRange(c.Query("from"), c.Query("to"))
+	if err != nil {
+		mapErr(c, err)
+		return
+	}
+	rows, err := h.reports.Breakdown(c.DefaultQuery("dimension", "purpose"), from, to)
+	if err != nil {
+		mapErr(c, err)
+		return
+	}
+	response.Success(c, gin.H{"data": rows})
+}
+
+// ReportExport — GET /api/library/v1/reports/export.csv (CSV sesuai filter)
+func (h *LibraryHandler) ReportExport(c *gin.Context) {
+	from, to, err := service.ParseRange(c.Query("from"), c.Query("to"))
+	if err != nil {
+		mapErr(c, err)
+		return
+	}
+	rows, err := h.reports.ExportRows(from, to, c.Query("visitor_type"), c.Query("location_id"))
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=library-kunjungan-%s_%s.csv", from.In(service.WIB()).Format("20060102"), to.In(service.WIB()).Format("20060102")))
+	c.String(200, "\ufeffWaktu,Nama,Tipe,Metode,Tujuan,Fakultas,Prodi,Unit\n")
+	w := csv.NewWriter(c.Writer)
+	for _, r := range rows {
+		_ = w.Write([]string{r.CheckIn, r.Name, r.VType, r.Method, r.Purpose, r.Faculty, r.Program, r.Unit})
+	}
+	w.Flush()
+}

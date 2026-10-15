@@ -132,6 +132,7 @@ func main() {
 		locationRepo := gormrepo.NewLocationRepository(db)
 		kioskRepo := gormrepo.NewKioskRepository(db)
 		auditRepo := gormrepo.NewAuditLogRepository(db)
+		reportSvc := service.NewReportService(db)
 
 		handlers = &router.Handlers{
 			Library: handler.NewLibraryHandler(
@@ -141,6 +142,7 @@ func main() {
 				service.NewKioskAdminService(kioskRepo, auditRepo),
 				purposeRepo,
 				locationRepo,
+				reportSvc,
 			),
 			Kiosk: handler.NewKioskHandler(
 				service.NewCheckinService(memberRepo, cardRepo, guestRepo, passRepo, visitRepo, purposeRepo, locationRepo, auditRepo, hmacKey),

@@ -134,7 +134,7 @@ type LibraryVisit struct {
 	MemberID             string     `json:"member_id" gorm:"type:varchar(36);index"`
 	GuestID              string     `json:"guest_id" gorm:"type:varchar(36);index"`
 	PurposeID            string     `json:"purpose_id" gorm:"type:varchar(36)"`
-	CheckInAt            time.Time  `json:"check_in_at" gorm:"not null"`
+	CheckInAt            time.Time  `json:"check_in_at" gorm:"not null;index"`
 	CheckOutAt           *time.Time `json:"check_out_at"`
 	EntryMethod          string     `json:"entry_method" gorm:"type:varchar(24);not null"` // nfc|member_number|guest_barcode|manual|offline_sync
 	FallbackReason       string     `json:"fallback_reason" gorm:"type:varchar(32)"`       // forgot_card
