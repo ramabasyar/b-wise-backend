@@ -113,6 +113,16 @@ func main() {
 			zapLogger.Info("[startup] policy service ready (suspend + bandwidth)")
 		}
 	}
+	if policySvc != nil {
+		qi := 5 * time.Minute
+		if v, perr := strconv.Atoi(os.Getenv("AIRLINK_QUOTA_INTERVAL_SECONDS")); perr == nil && v >= 60 && v <= 86400 {
+			qi = time.Duration(v) * time.Second
+		}
+		go policySvc.RunQuotaReconciler(context.Background(), qi, func(f string, a ...interface{}) {
+			zapLogger.Info("[quota] " + fmt.Sprintf(f, a...))
+		})
+		zapLogger.Info("[startup] quota reconciler aktif")
+	}
 	var queueCancel context.CancelFunc
 	if policySvc != nil && os.Getenv("MIKROTIK_URL") != "" && os.Getenv("MIKROTIK_USER") != "" {
 		interval := 20 * time.Second

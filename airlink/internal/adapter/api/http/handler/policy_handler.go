@@ -38,6 +38,7 @@ func policyErrStatus(err error) int {
 	for _, m := range []string{
 		"username tidak valid", "format rate", "nama profil tidak valid",
 		"profil masih dipakai", "profil bandwidth tidak ditemukan",
+		"kuota", "format jam", "format hari",
 	} {
 		if strings.Contains(msg, m) {
 			return http.StatusBadRequest
@@ -77,7 +78,8 @@ func (h *PolicyHandler) GetUser(c *gin.Context) {
 			sessions = s
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"data": gin.H{"policy": p, "events": events, "active_sessions": sessions}})
+	today, month, _ := h.policy.UserUsage(username)
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"policy": p, "events": events, "active_sessions": sessions, "today_bytes": today, "month_bytes": month}})
 }
 
 type suspendReq struct {

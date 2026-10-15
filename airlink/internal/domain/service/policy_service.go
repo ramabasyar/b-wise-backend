@@ -10,9 +10,9 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-// PolicyService - status akun (suspend) & bandwidth per user WiFi.
-// DB: radius (tabel airlink_*). Enforcement auth oleh FreeRADIUS
-// (post-auth menolak akun suspended); sesi aktif dicoba diputus via CoA.
+// PolicyService - status akun (suspend), bandwidth, kuota, & jadwal per user WiFi.
+// DB: radius (tabel airlink_*). Enforcement auth oleh FreeRADIUS;
+// sesi aktif dicoba diputus via CoA, kuota oleh reconciler periodik.
 type PolicyService struct {
 	db  *sql.DB
 	coa *CoAKicker
@@ -48,18 +48,24 @@ type BWProfile struct {
 }
 
 type UserPolicy struct {
-	Username       string     `json:"username"`
-	Status         string     `json:"status"`
-	SuspendReason  string     `json:"suspend_reason,omitempty"`
-	SuspendedBy    string     `json:"suspended_by,omitempty"`
-	SuspendedAt    *time.Time `json:"suspended_at,omitempty"`
-	SuspendedUntil *time.Time `json:"suspended_until,omitempty"`
-	BWProfileID    *int64     `json:"bw_profile_id,omitempty"`
-	BWProfileName  string     `json:"bw_profile_name,omitempty"`
-	RateUp         string     `json:"rate_up,omitempty"`
-	RateDown       string     `json:"rate_down,omitempty"`
-	UpdatedBy      string     `json:"updated_by,omitempty"`
-	UpdatedAt      *time.Time `json:"updated_at,omitempty"`
+	Username        string     `json:"username"`
+	Status          string     `json:"status"`
+	SuspendReason   string     `json:"suspend_reason,omitempty"`
+	SuspendedBy     string     `json:"suspended_by,omitempty"`
+	SuspendedAt     *time.Time `json:"suspended_at,omitempty"`
+	SuspendedUntil  *time.Time `json:"suspended_until,omitempty"`
+	BWProfileID     *int64     `json:"bw_profile_id,omitempty"`
+	BWProfileName   string     `json:"bw_profile_name,omitempty"`
+	RateUp          string     `json:"rate_up,omitempty"`
+	RateDown        string     `json:"rate_down,omitempty"`
+	QuotaDailyMB    *int64     `json:"quota_daily_mb,omitempty"`
+	QuotaMonthlyMB  *int64     `json:"quota_monthly_mb,omitempty"`
+	AccessStart     *string    `json:"access_start,omitempty"`
+	AccessEnd       *string    `json:"access_end,omitempty"`
+	AccessDays      string     `json:"access_days,omitempty"`
+	AutoSuspendedBy string     `json:"auto_suspended_by,omitempty"`
+	UpdatedBy       string     `json:"updated_by,omitempty"`
+	UpdatedAt       *time.Time `json:"updated_at,omitempty"`
 }
 
 type PolicyEvent struct {
@@ -71,11 +77,13 @@ type PolicyEvent struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// UserRow - baris daftar user: policy + ringkasan sesi.
+// UserRow - baris daftar user: policy + ringkasan sesi + pemakaian.
 type UserRow struct {
 	UserPolicy
 	ActiveSessions int64      `json:"active_sessions"`
 	LastSeen       *time.Time `json:"last_seen"`
+	TodayBytes     int64      `json:"today_bytes"`
+	MonthBytes     int64      `json:"month_bytes"`
 }
 
 // SessionRef - sesi aktif yang bisa di-putus via CoA.
@@ -95,18 +103,11 @@ func validProfileName(n string) bool { return profileNamePattern.MatchString(n) 
 
 const policyCols = `COALESCE(p.status,'active'), COALESCE(p.suspend_reason,''), p.suspended_at, p.suspended_until,
 	p.bw_profile_id, COALESCE(pr.name,''), COALESCE(p.rate_up,''), COALESCE(p.rate_down,''),
+	p.quota_daily_mb, p.quota_monthly_mb, p.access_start::text, p.access_end::text,
+	COALESCE(p.access_days,''), COALESCE(p.auto_suspended_by,''),
 	COALESCE(p.suspended_by,''), COALESCE(p.updated_by,''), p.updated_at`
 
-func scanPolicy(username string, sc func(dest ...interface{}) error) (UserPolicy, error) {
-	var p UserPolicy
-	p.Username = username
-	err := sc(&p.Status, &p.SuspendReason, &p.SuspendedAt, &p.SuspendedUntil,
-		&p.BWProfileID, &p.BWProfileName, &p.RateUp, &p.RateDown,
-		&p.SuspendedBy, &p.UpdatedBy, &p.UpdatedAt)
-	return p, err
-}
-
-// ListUsers - user dari radacct terbaru beserta policy-nya.
+// ListUsers - user dari radacct terbaru + policy + pemakaian (hari ini / bulan ini).
 func (s *PolicyService) ListUsers(query string, limit, offset int) ([]UserRow, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
@@ -120,7 +121,8 @@ func (s *PolicyService) ListUsers(query string, limit, offset int) ([]UserRow, e
 		query = "%" + strings.ToLower(query) + "%"
 	}
 	rows, err := s.db.Query(`
-		SELECT u.username, `+policyCols+`, u.active_sessions, u.last_seen
+		SELECT u.username, `+policyCols+`, u.active_sessions, u.last_seen,
+			COALESCE(td.today_bytes,0), COALESCE(tm.month_bytes,0)
 		FROM (
 			SELECT username, COUNT(*) FILTER (WHERE acctstoptime IS NULL) AS active_sessions,
 				MAX(acctstarttime) AS last_seen
@@ -128,6 +130,14 @@ func (s *PolicyService) ListUsers(query string, limit, offset int) ([]UserRow, e
 		) u
 		LEFT JOIN airlink_user_policy p ON p.username = u.username
 		LEFT JOIN airlink_bw_profiles pr ON pr.id = p.bw_profile_id
+		LEFT JOIN LATERAL (
+			SELECT COALESCE(SUM(r.acctinputoctets+r.acctoutputoctets),0) AS today_bytes
+			FROM radacct r WHERE r.username=u.username AND r.acctstarttime >= date_trunc('day', now())
+		) td ON true
+		LEFT JOIN LATERAL (
+			SELECT COALESCE(SUM(r.acctinputoctets+r.acctoutputoctets),0) AS month_bytes
+			FROM radacct r WHERE r.username=u.username AND r.acctstarttime >= date_trunc('month', now())
+		) tm ON true
 		WHERE lower(u.username) LIKE $1
 		ORDER BY u.last_seen DESC NULLS LAST
 		LIMIT $2 OFFSET $3`, query, limit, offset)
@@ -141,8 +151,11 @@ func (s *PolicyService) ListUsers(query string, limit, offset int) ([]UserRow, e
 		if err := rows.Scan(&r.Username,
 			&r.Status, &r.SuspendReason, &r.SuspendedAt, &r.SuspendedUntil,
 			&r.BWProfileID, &r.BWProfileName, &r.RateUp, &r.RateDown,
+			&r.QuotaDailyMB, &r.QuotaMonthlyMB, &r.AccessStart, &r.AccessEnd,
+			&r.AccessDays, &r.AutoSuspendedBy,
 			&r.SuspendedBy, &r.UpdatedBy, &r.UpdatedAt,
-			&r.ActiveSessions, &r.LastSeen); err != nil {
+			&r.ActiveSessions, &r.LastSeen,
+			&r.TodayBytes, &r.MonthBytes); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -150,7 +163,7 @@ func (s *PolicyService) ListUsers(query string, limit, offset int) ([]UserRow, e
 	return out, rows.Err()
 }
 
-// GetUser - policy satu user; tanpa baris = default aktif tanpa limit custom.
+// GetUser - policy satu user; tanpa baris = default aktif tanpa batasan.
 func (s *PolicyService) GetUser(username string) (*UserPolicy, error) {
 	var p UserPolicy
 	err := s.db.QueryRow(`
@@ -159,6 +172,8 @@ func (s *PolicyService) GetUser(username string) (*UserPolicy, error) {
 		WHERE p.username = $1`, username).Scan(
 		&p.Status, &p.SuspendReason, &p.SuspendedAt, &p.SuspendedUntil,
 		&p.BWProfileID, &p.BWProfileName, &p.RateUp, &p.RateDown,
+		&p.QuotaDailyMB, &p.QuotaMonthlyMB, &p.AccessStart, &p.AccessEnd,
+		&p.AccessDays, &p.AutoSuspendedBy,
 		&p.SuspendedBy, &p.UpdatedBy, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return &UserPolicy{Username: username, Status: "active"}, nil
@@ -320,7 +335,7 @@ func (s *PolicyService) UnsuspendUser(username, actor string) (*UserPolicy, erro
 		VALUES ($1, 'active', $2, NOW())
 		ON CONFLICT (username) DO UPDATE SET
 			status='active', suspend_reason=NULL, suspended_by=NULL, suspended_at=NULL,
-			suspended_until=NULL, updated_by=$2, updated_at=NOW()`, username, actor)
+			suspended_until=NULL, auto_suspended_by=NULL, updated_by=$2, updated_at=NOW()`, username, actor)
 	if err != nil {
 		return nil, fmt.Errorf("gagal mengaktifkan akun: %w", err)
 	}
@@ -379,7 +394,7 @@ func (s *PolicyService) SetBandwidth(username string, profileID *int64, rateUp, 
 	if rateDown != "" && !validRate(rateDown) {
 		return nil, fmt.Errorf("format rate_down tidak valid (contoh: 20M)")
 	}
-	var up, down any
+	var up, down interface{}
 	if rateUp == "" {
 		up = nil
 	} else {
@@ -390,7 +405,7 @@ func (s *PolicyService) SetBandwidth(username string, profileID *int64, rateUp, 
 	} else {
 		down = rateDown
 	}
-	var pid any
+	var pid interface{}
 	if profileID != nil {
 		pid = *profileID
 	}
