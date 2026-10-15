@@ -94,6 +94,8 @@ func SetupWithLogger(
 				policy.GET("/users", jwksAuth.RequireUser(), permCheck.RequirePermission("wifi.policy.read"), handlers.Policy.ListUsers)
 				policy.GET("/profiles", jwksAuth.RequireUser(), permCheck.RequirePermission("wifi.policy.read"), handlers.Policy.ListProfiles)
 				policy.GET("/users/:username", jwksAuth.RequireUser(), permCheck.RequirePermission("wifi.policy.read"), handlers.Policy.GetUser)
+				policy.GET("/usage/summary", jwksAuth.RequireUser(), permCheck.RequirePermission("wifi.policy.read"), handlers.Policy.UsageSummary)
+				policy.GET("/users/:username/usage/daily", jwksAuth.RequireUser(), permCheck.RequirePermission("wifi.policy.read"), handlers.Policy.UsageDaily)
 				policy.POST("/users/:username/suspend", jwksAuth.RequireUser(), permCheck.RequirePermission("wifi.policy.manage"), handlers.Policy.Suspend)
 				policy.POST("/users/:username/unsuspend", jwksAuth.RequireUser(), permCheck.RequirePermission("wifi.policy.manage"), handlers.Policy.Unsuspend)
 				policy.POST("/users/:username/kick", jwksAuth.RequireUser(), permCheck.RequirePermission("wifi.policy.manage"), handlers.Policy.Kick)
