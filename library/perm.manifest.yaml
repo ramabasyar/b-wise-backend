@@ -1,0 +1,107 @@
+# perm.manifest.yaml — sumber kebenaran permissions & menu service ini.
+# Self-sync otomatis ke Permission Service setiap kali service boot (idempotent).
+# Roles dibuat manual di Permission Service admin setelah sync pertama.
+service:
+  name: library
+  description: "Binawan Library — pencatatan & pelaporan kunjungan perpustakaan (anggota NFC, fallback NIM, tamu barcode/QR)"
+  base_url: ""
+  sync_enabled: true
+
+permissions:
+  # Dashboard & laporan
+  - permission: library.dashboard.read
+    description: Lihat ringkasan dashboard perpustakaan
+  - permission: library.reports.read
+    description: Lihat laporan kunjungan
+  - permission: library.reports.export
+    description: Ekspor laporan kunjungan (CSV)
+
+  # Anggota & kartu
+  - permission: library.members.read
+    description: Lihat daftar dan detail anggota
+  - permission: library.members.create
+    description: Mendaftarkan anggota baru
+  - permission: library.members.update
+    description: Memperbarui dan menonaktifkan anggota
+  - permission: library.members.import
+    description: Impor anggota via CSV (preview & commit)
+  - permission: library.cards.enroll
+    description: Mendaftarkan/mengganti kartu NFC anggota
+  - permission: library.cards.revoke
+    description: Mencabut kartu anggota
+
+  # Tamu & guest pass
+  - permission: library.guest_passes.issue
+    description: Menerbitkan barcode/QR pass tamu
+  - permission: library.guest_passes.revoke
+    description: Mencabut pass tamu
+
+  # Kunjungan
+  - permission: library.visits.create
+    description: Input kunjungan manual oleh operator
+  - permission: library.visits.read
+    description: Lihat riwayat kunjungan
+  - permission: library.visits.correct
+    description: Mengoreksi record kunjungan
+  - permission: library.visits.void
+    description: Membatalkan kunjungan dengan alasan
+
+  # Pengaturan operasional
+  - permission: library.kiosks.manage
+    description: Kelola perangkat kiosk
+  - permission: library.locations.manage
+    description: Kelola lokasi perpustakaan
+  - permission: library.purposes.manage
+    description: Kelola tujuan kunjungan
+
+menu:
+  - label: "Binawan Library"
+    path: /dashboard/library
+    icon: BookOpen
+    sort_order: 40
+    children:
+      - label: Ringkasan
+        path: /dashboard/library
+        icon: Activity
+        required_permission: library.dashboard.read
+        sort_order: 1
+      - label: Kunjungan
+        path: /dashboard/library/visits
+        icon: ClipboardList
+        required_permission: library.visits.read
+        sort_order: 2
+      - label: Anggota
+        path: /dashboard/library/members
+        icon: Users
+        required_permission: library.members.read
+        sort_order: 3
+      - label: Impor Anggota
+        path: /dashboard/library/member-imports
+        icon: Upload
+        required_permission: library.members.import
+        sort_order: 4
+      - label: Tamu & Pass
+        path: /dashboard/library/guests
+        icon: UserPlus
+        required_permission: library.visits.read
+        sort_order: 5
+      - label: Laporan
+        path: /dashboard/library/reports
+        icon: BarChart3
+        required_permission: library.reports.read
+        sort_order: 6
+      - label: Lokasi
+        path: /dashboard/library/settings/locations
+        icon: MapPin
+        required_permission: library.locations.manage
+        sort_order: 7
+      - label: Kiosk
+        path: /dashboard/library/settings/kiosks
+        icon: Monitor
+        required_permission: library.kiosks.manage
+        sort_order: 8
+      - label: Tujuan Kunjungan
+        path: /dashboard/library/settings/purposes
+        icon: ListChecks
+        required_permission: library.purposes.manage
+        sort_order: 9
