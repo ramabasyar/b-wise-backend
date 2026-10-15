@@ -8,6 +8,8 @@
 keys/
 *.pem
 *.key
+# CA publik untuk paket onboarding WiFi; private key tetap diabaikan.
+!airlink/internal/domain/service/assets/binawan-wifi-ca.pem
 
 # Build & runtime
 bin/

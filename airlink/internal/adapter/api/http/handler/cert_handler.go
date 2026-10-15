@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"airlink/internal/adapter/api/http/middleware"
@@ -106,6 +107,11 @@ func (h *CertHandler) GetPackage(c *gin.Context) {
 	if !h.ready(c) {
 		return
 	}
+	platform := strings.ToLower(strings.TrimSpace(c.DefaultQuery("platform", "certificate")))
+	if !service.SupportedWiFiPlatform(platform) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "platform paket tidak didukung"})
+		return
+	}
 	username, device := c.Param("username"), c.Param("device")
 	data, password, err := h.store.Package(c.Request.Context(), username, device, actorID(c))
 	if err != nil {
@@ -117,6 +123,15 @@ func (h *CertHandler) GetPackage(c *gin.Context) {
 		return
 	}
 	c.Header("Cache-Control", "no-store")
+	if platform != "certificate" {
+		bundle, bundleErr := service.BuildWiFiBundle(platform, username, device, data)
+		if bundleErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "paket instalasi tidak dapat dibuat"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"data": gin.H{"filename": bundle.Filename, "file_base64": base64.StdEncoding.EncodeToString(bundle.Data), "content_type": "application/zip", "password": password}})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"filename": username + "-" + device + ".p12", "p12_base64": base64.StdEncoding.EncodeToString(data), "password": password}})
 }
 

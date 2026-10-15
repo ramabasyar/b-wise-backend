@@ -14,7 +14,8 @@ Portal pengelolaan jaringan Binawan — service B-Wise untuk WiFi WPA2-Enterpris
 - `GET /api/airlink/auth-logs` — log autentikasi radpostauth
 - `GET /api/airlink/certs` — metadata sertifikat yang diterbitkan Airlink (IT)
 - `POST /api/airlink/certs` — penerbitan cert oleh IT
-- `GET /api/airlink/certs/:username/:device/package` — unduh ulang paket dan password (diaudit)
+- `GET /api/airlink/certs/:username/:device/package` — unduh ulang P12 dan password (diaudit)
+- `GET /api/airlink/certs/:username/:device/package?platform=windows|macos|ios|android|linux` — ZIP khusus sertifikat user/perangkat; Windows berisi `install-wifi.bat`, PowerShell installer, profil EAP-TLS, dan CA. Platform lain berisi P12, CA, dan panduan yang sesuai. Password P12 diberikan terpisah dalam respons portal, tidak disimpan di ZIP.
 - `GET /api/airlink/dns/records` — daftar record PowerDNS
 - `POST/PUT/DELETE /api/airlink/dns/records` — kelola A/AAAA/CNAME/TXT oleh IT, audit di `dns_change_audit`, lalu sinkronkan dnsmasq
 - `POST /api/airlink/dns/sync` — sinkronkan ulang exact-name forwarding
