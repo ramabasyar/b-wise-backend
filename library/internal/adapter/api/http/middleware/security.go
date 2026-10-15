@@ -13,19 +13,19 @@ type SecurityMiddleware struct {
 
 // SecurityConfig defines security header configuration
 type SecurityConfig struct {
-	EnableHSTS              bool
-	HSTSMaxAge              int64
-	HSTSIncludeSubDomains   bool
-	EnableCSP               bool
-	CSPDirectives           string
-	EnableFrameOptions      bool
-	FrameOption             string
+	EnableHSTS               bool
+	HSTSMaxAge               int64
+	HSTSIncludeSubDomains    bool
+	EnableCSP                bool
+	CSPDirectives            string
+	EnableFrameOptions       bool
+	FrameOption              string
 	EnableContentTypeOptions bool
-	EnableXSSProtection     bool
-	EnableReferrerPolicy    bool
-	ReferrerPolicy          string
-	EnablePermissionsPolicy bool
-	PermissionsPolicy       string
+	EnableXSSProtection      bool
+	EnableReferrerPolicy     bool
+	ReferrerPolicy           string
+	EnablePermissionsPolicy  bool
+	PermissionsPolicy        string
 }
 
 // NewSecurityMiddleware creates a new security middleware
@@ -108,16 +108,16 @@ func (m *SecurityMiddleware) Security() gin.HandlerFunc {
 // DefaultSecurityConfig returns default security configuration
 func DefaultSecurityConfig() SecurityConfig {
 	return SecurityConfig{
-		EnableHSTS:              true,
-		HSTSMaxAge:              31536000, // 1 year
-		HSTSIncludeSubDomains:   true,
-		EnableCSP:               true,
-		EnableFrameOptions:      true,
-		FrameOption:             "DENY",
+		EnableHSTS:               true,
+		HSTSMaxAge:               31536000, // 1 year
+		HSTSIncludeSubDomains:    true,
+		EnableCSP:                true,
+		EnableFrameOptions:       true,
+		FrameOption:              "DENY",
 		EnableContentTypeOptions: true,
-		EnableXSSProtection:     true,
-		EnableReferrerPolicy:    true,
-		ReferrerPolicy:          "strict-origin-when-cross-origin",
-		EnablePermissionsPolicy: true,
+		EnableXSSProtection:      true,
+		EnableReferrerPolicy:     true,
+		ReferrerPolicy:           "strict-origin-when-cross-origin",
+		EnablePermissionsPolicy:  true,
 	}
 }

@@ -93,7 +93,7 @@ func (p *PermissionCheck) RequirePermission(permission string) gin.HandlerFunc {
 
 		if !results[permission] {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"error":                "insufficient permissions",
+				"error":               "insufficient permissions",
 				"required_permission": permission,
 			})
 			return
@@ -134,9 +134,9 @@ func (p *PermissionCheck) RequireAnyPermission(perms ...string) gin.HandlerFunc 
 		}
 
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-			"error":                 "insufficient permissions",
+			"error":                "insufficient permissions",
 			"required_permissions": perms,
-			"mode":                  "any",
+			"mode":                 "any",
 		})
 	}
 }
@@ -167,10 +167,10 @@ func (p *PermissionCheck) RequireAllPermissions(perms ...string) gin.HandlerFunc
 		for _, perm := range perms {
 			if !results[perm] {
 				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-					"error":                 "insufficient permissions",
+					"error":                "insufficient permissions",
 					"required_permissions": perms,
-					"mode":                  "all",
-					"missing":               perm,
+					"mode":                 "all",
+					"missing":              perm,
 				})
 				return
 			}

@@ -1,9 +1,9 @@
 package mapper
 
 import (
-	"github.com/rama/b-wise/library/internal/domain/entity"
 	"github.com/rama/b-wise/library/internal/domain/dto/request"
 	"github.com/rama/b-wise/library/internal/domain/dto/response"
+	"github.com/rama/b-wise/library/internal/domain/entity"
 )
 
 // ToSampleResponse maps entity → response DTO

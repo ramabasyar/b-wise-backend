@@ -24,12 +24,12 @@ type Config struct {
 
 // ServerConfig holds server configuration
 type ServerConfig struct {
-	Port              int64         `mapstructure:"port"`
-	Host              string        `mapstructure:"host"`
-	ReadTimeout       time.Duration `mapstructure:"read_timeout"`
-	WriteTimeout      time.Duration `mapstructure:"write_timeout"`
-	ShutdownTimeout   time.Duration `mapstructure:"shutdown_timeout"`
-	MaxBodySize       int64         `mapstructure:"max_body_size"`
+	Port            int64         `mapstructure:"port"`
+	Host            string        `mapstructure:"host"`
+	ReadTimeout     time.Duration `mapstructure:"read_timeout"`
+	WriteTimeout    time.Duration `mapstructure:"write_timeout"`
+	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"`
+	MaxBodySize     int64         `mapstructure:"max_body_size"`
 }
 
 // DatabaseConfig holds database configuration
@@ -57,21 +57,21 @@ type RedisConfig struct {
 
 // JWTConfig holds JWT configuration
 type JWTConfig struct {
-	Secret          string        `mapstructure:"secret"`
+	Secret           string        `mapstructure:"secret"`
 	AccessExpiration time.Duration `mapstructure:"access_expiration"`
 }
 
 // SSOConfig holds SSO client configuration
 type SSOConfig struct {
-	URL                      string        `mapstructure:"url"`
-	ServiceAccountEmail      string        `mapstructure:"service_account_email"`
-	ServiceAccountPassword   string        `mapstructure:"service_account_password"`
-	CacheEnabled             bool          `mapstructure:"cache_enabled"`
-	CacheTTL                 time.Duration `mapstructure:"cache_ttl"`
-	PermissionServiceURL     string        `mapstructure:"permission_service_url"`
-	ServiceName              string        `mapstructure:"service_name"`
-	ServiceClientID          string        `mapstructure:"service_client_id"`
-	ServiceClientSecret      string        `mapstructure:"service_client_secret"`
+	URL                    string        `mapstructure:"url"`
+	ServiceAccountEmail    string        `mapstructure:"service_account_email"`
+	ServiceAccountPassword string        `mapstructure:"service_account_password"`
+	CacheEnabled           bool          `mapstructure:"cache_enabled"`
+	CacheTTL               time.Duration `mapstructure:"cache_ttl"`
+	PermissionServiceURL   string        `mapstructure:"permission_service_url"`
+	ServiceName            string        `mapstructure:"service_name"`
+	ServiceClientID        string        `mapstructure:"service_client_id"`
+	ServiceClientSecret    string        `mapstructure:"service_client_secret"`
 }
 
 // LoggerConfig holds logger configuration

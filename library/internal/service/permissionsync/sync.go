@@ -65,10 +65,10 @@ func LoadManifest(path string) (*Manifest, error) {
 
 // Syncer — client self-sync
 type Syncer struct {
-	cfg       config.SSOConfig
-	manifest  *Manifest
-	client    *http.Client
-	logFn     func(format string, args ...interface{})
+	cfg      config.SSOConfig
+	manifest *Manifest
+	client   *http.Client
+	logFn    func(format string, args ...interface{})
 }
 
 // New membuat syncer dari config SSO + manifest

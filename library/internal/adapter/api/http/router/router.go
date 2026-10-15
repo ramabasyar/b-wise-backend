@@ -115,6 +115,49 @@ func SetupWithLogger(
 	//	}
 	_ = api
 
+	// ===== Binawan Library: operator/admin (JWT SSO + permission) =====
+	libJWKS := middleware.NewJWKSAuth(ssoURL)
+	libPerm := middleware.NewPermissionCheck(permissionURL, serviceName).
+		WithSSO(ssoURL, serviceClientID, serviceClientSecret)
+	if handlers != nil && handlers.Library != nil {
+		h := handlers.Library
+		api := r.Group("/api/library/v1")
+		api.Use(libJWKS.RequireAuth())
+		api.Use(libPerm.CheckAccess())
+		{
+			api.GET("/members", libPerm.RequirePermission("library.members.read"), h.ListMembers)
+			api.POST("/members", libPerm.RequirePermission("library.members.create"), h.CreateMember)
+			api.GET("/members/:id", libPerm.RequirePermission("library.members.read"), h.GetMember)
+			api.PATCH("/members/:id", libPerm.RequirePermission("library.members.update"), h.UpdateMember)
+			api.GET("/members/:id/cards", libPerm.RequirePermission("library.members.read"), h.CardHistory)
+			api.POST("/members/:id/cards", libPerm.RequirePermission("library.cards.enroll"), h.EnrollCard)
+			api.POST("/cards/:id/revoke", libPerm.RequirePermission("library.cards.revoke"), h.RevokeCard)
+			api.GET("/visits", libPerm.RequirePermission("library.visits.read"), h.ListVisits)
+			api.POST("/visits/manual", libPerm.RequirePermission("library.visits.create"), h.ManualVisit)
+			api.PATCH("/visits/:id", libPerm.RequirePermission("library.visits.correct"), h.CorrectVisit)
+			api.POST("/visits/:id/void", libPerm.RequirePermission("library.visits.void"), h.VoidVisit)
+			api.GET("/guests", libPerm.RequirePermission("library.visits.read"), h.ListGuests)
+			api.POST("/guests", libPerm.RequirePermission("library.guest_passes.issue"), h.CreateGuestWithPass)
+			api.POST("/guests/:id/passes", libPerm.RequirePermission("library.guest_passes.issue"), h.IssuePass)
+			api.POST("/guest-passes/:id/revoke", libPerm.RequirePermission("library.guest_passes.revoke"), h.RevokePass)
+			api.GET("/purposes", libPerm.RequirePermission("library.visits.read"), h.ListPurposes)
+			api.GET("/locations", libPerm.RequirePermission("library.locations.manage"), h.ListLocations)
+			api.POST("/kiosks", libPerm.RequirePermission("library.kiosks.manage"), h.ProvisionKiosk)
+			api.GET("/kiosks", libPerm.RequirePermission("library.kiosks.manage"), h.ListKiosks)
+		}
+	}
+
+	// ===== Binawan Library: kiosk (device credential) =====
+	if handlers != nil && handlers.Kiosk != nil && handlers.KioskAuth != nil {
+		k := r.Group("/api/library/kiosk/v1")
+		k.Use(handlers.KioskAuth.Require())
+		{
+			k.POST("/check-ins", handlers.Kiosk.CheckIn)
+			k.POST("/heartbeat", handlers.Kiosk.Heartbeat)
+			k.GET("/config", handlers.Kiosk.Config)
+		}
+	}
+
 	return r
 }
 
@@ -122,5 +165,8 @@ func SetupWithLogger(
 // Add your handler fields here when creating new entities.
 type Handlers struct {
 	// Item  *handler.ItemHandler  // sample
-	_ struct{} // prevent empty struct warning
+	_         struct{} // prevent empty struct warning
+	Library   *handler.LibraryHandler
+	Kiosk     *handler.KioskHandler
+	KioskAuth *middleware.KioskAuth
 }

@@ -10,13 +10,18 @@ import (
 	"syscall"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rama/b-wise/library/internal/adapter/api/http/handler"
+	"github.com/rama/b-wise/library/internal/adapter/api/http/middleware"
 	"github.com/rama/b-wise/library/internal/adapter/api/http/router"
 	"github.com/rama/b-wise/library/internal/adapter/cache"
 	"github.com/rama/b-wise/library/internal/adapter/config"
 	"github.com/rama/b-wise/library/internal/adapter/database"
 	"github.com/rama/b-wise/library/internal/adapter/logger"
+	gormrepo "github.com/rama/b-wise/library/internal/adapter/repository/gorm"
 	"github.com/rama/b-wise/library/internal/domain/entity"
+	"github.com/rama/b-wise/library/internal/service"
 	"github.com/rama/b-wise/library/internal/service/permissionsync"
+	"github.com/rama/b-wise/library/internal/service/seed"
 	"gorm.io/gorm"
 )
 
@@ -82,6 +87,7 @@ func main() {
 				log.Fatalf("auto-migrate library entities: %v", err)
 			}
 			zapLogger.Info("[startup] library schema migrated (10 tables)")
+			seed.Defaults(db, func(f string, a ...interface{}) { zapLogger.Info(fmt.Sprintf(f, a...)) })
 		}
 	}
 
@@ -111,6 +117,39 @@ func main() {
 	// 	// Item: myHandler,  // uncomment field in router.Handlers first
 	// }
 	handlers := &router.Handlers{}
+	if db != nil {
+		hmacKey := os.Getenv("LIBRARY_HMAC_KEY")
+		if hmacKey == "" {
+			hmacKey = cfg.JWT.Secret
+			zapLogger.Info("[startup] LIBRARY_HMAC_KEY kosong — memakai JWT secret sebagai kunci HMAC kredensial")
+		}
+		memberRepo := gormrepo.NewMemberRepository(db)
+		cardRepo := gormrepo.NewMemberCardRepository(db)
+		guestRepo := gormrepo.NewGuestRepository(db)
+		passRepo := gormrepo.NewGuestPassRepository(db)
+		purposeRepo := gormrepo.NewVisitPurposeRepository(db)
+		visitRepo := gormrepo.NewVisitRepository(db)
+		locationRepo := gormrepo.NewLocationRepository(db)
+		kioskRepo := gormrepo.NewKioskRepository(db)
+		auditRepo := gormrepo.NewAuditLogRepository(db)
+
+		handlers = &router.Handlers{
+			Library: handler.NewLibraryHandler(
+				service.NewMemberService(memberRepo, cardRepo, auditRepo, hmacKey),
+				service.NewVisitService(visitRepo, memberRepo, purposeRepo, auditRepo),
+				service.NewGuestService(guestRepo, passRepo, auditRepo, hmacKey),
+				service.NewKioskAdminService(kioskRepo, auditRepo),
+				purposeRepo,
+				locationRepo,
+			),
+			Kiosk: handler.NewKioskHandler(
+				service.NewCheckinService(memberRepo, cardRepo, guestRepo, passRepo, visitRepo, purposeRepo, locationRepo, auditRepo, hmacKey),
+				kioskRepo,
+				purposeRepo,
+			),
+			KioskAuth: middleware.NewKioskAuth(kioskRepo),
+		}
+	}
 
 	// ===== Setup router =====
 	zapGlobal := zapLogger.SugaredLogger.Desugar()

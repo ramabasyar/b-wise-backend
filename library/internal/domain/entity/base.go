@@ -1,6 +1,12 @@
 package entity
 
-import "time"
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"time"
+
+	"gorm.io/gorm"
+)
 
 // Base contains common fields for all entities.
 // Embed this in your entity structs.
@@ -8,6 +14,18 @@ type Base struct {
 	ID        string    `json:"id" gorm:"primaryKey;type:varchar(36)"`
 	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+}
+
+// BeforeCreate mengisi ID acak (32 hex) bila kosong — semua entity library.
+func (b *Base) BeforeCreate(tx *gorm.DB) error {
+	if b.ID == "" {
+		raw := make([]byte, 16)
+		if _, err := rand.Read(raw); err != nil {
+			return err
+		}
+		b.ID = hex.EncodeToString(raw)
+	}
+	return nil
 }
 
 // SampleEntity is a SAMPLE entity — replace with your own.
