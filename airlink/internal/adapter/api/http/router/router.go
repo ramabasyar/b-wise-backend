@@ -14,6 +14,7 @@ type Handlers struct {
 	Airlink *handler.AirlinkHandler
 	Cert    *handler.CertHandler
 	DNS     *handler.DNSHandler
+	Policy  *handler.PolicyHandler
 }
 
 func SetupWithLogger(
@@ -86,6 +87,21 @@ func SetupWithLogger(
 			airlink.GET("/activity/dns", jwksAuth.RequireUser(), permCheck.RequirePermission("network.activity.read"), handlers.DNS.Queries)
 			airlink.GET("/activity/netflow", jwksAuth.RequireUser(), permCheck.RequirePermission("network.activity.read"), handlers.DNS.Flows)
 			airlink.GET("/activity/summary", jwksAuth.RequireUser(), permCheck.RequirePermission("network.activity.read"), handlers.DNS.Summary)
+
+			// User access policy: suspend & bandwidth (IT only).
+			policy := airlink.Group("/policy")
+			{
+				policy.GET("/users", jwksAuth.RequireUser(), permCheck.RequirePermission("wifi.policy.read"), handlers.Policy.ListUsers)
+				policy.GET("/profiles", jwksAuth.RequireUser(), permCheck.RequirePermission("wifi.policy.read"), handlers.Policy.ListProfiles)
+				policy.GET("/users/:username", jwksAuth.RequireUser(), permCheck.RequirePermission("wifi.policy.read"), handlers.Policy.GetUser)
+				policy.POST("/users/:username/suspend", jwksAuth.RequireUser(), permCheck.RequirePermission("wifi.policy.manage"), handlers.Policy.Suspend)
+				policy.POST("/users/:username/unsuspend", jwksAuth.RequireUser(), permCheck.RequirePermission("wifi.policy.manage"), handlers.Policy.Unsuspend)
+				policy.POST("/users/:username/kick", jwksAuth.RequireUser(), permCheck.RequirePermission("wifi.policy.manage"), handlers.Policy.Kick)
+				policy.PUT("/users/:username/bandwidth", jwksAuth.RequireUser(), permCheck.RequirePermission("wifi.policy.manage"), handlers.Policy.SetBandwidth)
+				policy.POST("/profiles", jwksAuth.RequireUser(), permCheck.RequirePermission("wifi.policy.manage"), handlers.Policy.CreateProfile)
+				policy.PUT("/profiles/:id", jwksAuth.RequireUser(), permCheck.RequirePermission("wifi.policy.manage"), handlers.Policy.UpdateProfile)
+				policy.DELETE("/profiles/:id", jwksAuth.RequireUser(), permCheck.RequirePermission("wifi.policy.manage"), handlers.Policy.DeleteProfile)
+			}
 		}
 	}
 

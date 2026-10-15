@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -97,10 +98,53 @@ func main() {
 		}
 	}
 
+	// Policy service (suspend + bandwidth) & reconciler queue MikroTik
+	var policySvc *service.PolicyService
+	if cfg.RadiusDB.DSN != "" {
+		sshTarget := ""
+		if cfg.RadiusSSH.Host != "" && cfg.RadiusSSH.User != "" {
+			sshTarget = cfg.RadiusSSH.User + "@" + cfg.RadiusSSH.Host
+		}
+		policySvc, err = service.NewPolicyService(cfg.RadiusDB.DSN, sshTarget, os.Getenv("RADIUS_COA_SECRET"))
+		if err != nil {
+			zapLogger.Info(fmt.Sprintf("[startup] policy service skipped: %v", err))
+		} else {
+			defer policySvc.Close()
+			zapLogger.Info("[startup] policy service ready (suspend + bandwidth)")
+		}
+	}
+	var queueCancel context.CancelFunc
+	if policySvc != nil && os.Getenv("MIKROTIK_URL") != "" && os.Getenv("MIKROTIK_USER") != "" {
+		interval := 20 * time.Second
+		if v, perr := strconv.Atoi(os.Getenv("MIKROTIK_INTERVAL_SECONDS")); perr == nil && v >= 5 && v <= 3600 {
+			interval = time.Duration(v) * time.Second
+		}
+		qcfg := service.QueueConfig{
+			BaseURL:            os.Getenv("MIKROTIK_URL"),
+			User:               os.Getenv("MIKROTIK_USER"),
+			Pass:               os.Getenv("MIKROTIK_PASS"),
+			InsecureSkipVerify: os.Getenv("MIKROTIK_INSECURE") != "0",
+			DefaultUp:          os.Getenv("AIRLINK_DEFAULT_UP"),
+			DefaultDown:        os.Getenv("AIRLINK_DEFAULT_DOWN"),
+			Interval:           interval,
+		}
+		var qctx context.Context
+		qctx, queueCancel = context.WithCancel(context.Background())
+		defer queueCancel()
+		qs := service.NewQueueService(policySvc, qcfg, func(f string, a ...interface{}) {
+			zapLogger.Info("[queue] " + fmt.Sprintf(f, a...))
+		})
+		go qs.Run(qctx)
+		zapLogger.Info("[startup] queue reconciler MikroTik aktif")
+	} else {
+		zapLogger.Info("[startup] queue reconciler MikroTik nonaktif (MIKROTIK_URL/USER belum diisi)")
+	}
+
 	handlers := &router.Handlers{
 		Airlink: handler.NewAirlinkHandler(radiusSvc),
 		Cert:    handler.NewCertHandler(certSvc, certStore, radiusSvc),
 		DNS:     handler.NewDNSHandler(dnsSvc, radiusSvc),
+		Policy:  handler.NewPolicyHandler(policySvc, radiusSvc),
 	}
 
 	srv := router.SetupWithLogger(
@@ -138,6 +182,10 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	zapLogger.Info("[shutdown] signal received")
+
+	if queueCancel != nil {
+		queueCancel()
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

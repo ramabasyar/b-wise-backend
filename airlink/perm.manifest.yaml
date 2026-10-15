@@ -32,6 +32,11 @@ permissions:
     description: Tambah, ubah, hapus dan sinkronkan record DNS internal
   - permission: network.activity.read
     description: Lihat log query DNS dan NetFlow jaringan
+  - permission: wifi.policy.read
+    description: Lihat status akun (suspend) & pengaturan bandwidth user WiFi
+  - permission: wifi.policy.manage
+    description: Suspend/aktifkan akun, putus sesi, dan atur bandwidth user WiFi
+
 
 menu:
   - label: "Airlink"
@@ -74,3 +79,9 @@ menu:
         icon: Activity
         required_permission: network.activity.read
         sort_order: 7
+      - label: Manajemen Akses
+        path: /dashboard/airlink/access
+        icon: Users
+        required_permission: wifi.policy.read
+        sort_order: 8
+
