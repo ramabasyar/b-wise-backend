@@ -48,24 +48,26 @@ type BWProfile struct {
 }
 
 type UserPolicy struct {
-	Username        string     `json:"username"`
-	Status          string     `json:"status"`
-	SuspendReason   string     `json:"suspend_reason,omitempty"`
-	SuspendedBy     string     `json:"suspended_by,omitempty"`
-	SuspendedAt     *time.Time `json:"suspended_at,omitempty"`
-	SuspendedUntil  *time.Time `json:"suspended_until,omitempty"`
-	BWProfileID     *int64     `json:"bw_profile_id,omitempty"`
-	BWProfileName   string     `json:"bw_profile_name,omitempty"`
-	RateUp          string     `json:"rate_up,omitempty"`
-	RateDown        string     `json:"rate_down,omitempty"`
-	QuotaDailyMB    *int64     `json:"quota_daily_mb,omitempty"`
-	QuotaMonthlyMB  *int64     `json:"quota_monthly_mb,omitempty"`
-	AccessStart     *string    `json:"access_start,omitempty"`
-	AccessEnd       *string    `json:"access_end,omitempty"`
-	AccessDays      string     `json:"access_days,omitempty"`
-	AutoSuspendedBy string     `json:"auto_suspended_by,omitempty"`
-	UpdatedBy       string     `json:"updated_by,omitempty"`
-	UpdatedAt       *time.Time `json:"updated_at,omitempty"`
+	Username          string     `json:"username"`
+	Status            string     `json:"status"`
+	SuspendReason     string     `json:"suspend_reason,omitempty"`
+	SuspendedBy       string     `json:"suspended_by,omitempty"`
+	SuspendedAt       *time.Time `json:"suspended_at,omitempty"`
+	SuspendedUntil    *time.Time `json:"suspended_until,omitempty"`
+	BWProfileID       *int64     `json:"bw_profile_id,omitempty"`
+	BWProfileName     string     `json:"bw_profile_name,omitempty"`
+	RateUp            string     `json:"rate_up,omitempty"`
+	RateDown          string     `json:"rate_down,omitempty"`
+	QuotaDailyMB      *int64     `json:"quota_daily_mb,omitempty"`
+	QuotaMonthlyMB    *int64     `json:"quota_monthly_mb,omitempty"`
+	AccessStart       *string    `json:"access_start,omitempty"`
+	AccessEnd         *string    `json:"access_end,omitempty"`
+	AccessDays        string     `json:"access_days,omitempty"`
+	AutoSuspendedBy   string     `json:"auto_suspended_by,omitempty"`
+	FilterProfileID   *int64     `json:"filter_profile_id,omitempty"`
+	FilterProfileName string     `json:"filter_profile_name,omitempty"`
+	UpdatedBy         string     `json:"updated_by,omitempty"`
+	UpdatedAt         *time.Time `json:"updated_at,omitempty"`
 }
 
 type PolicyEvent struct {
@@ -105,6 +107,7 @@ const policyCols = `COALESCE(p.status,'active'), COALESCE(p.suspend_reason,''), 
 	p.bw_profile_id, COALESCE(pr.name,''), COALESCE(p.rate_up,''), COALESCE(p.rate_down,''),
 	p.quota_daily_mb, p.quota_monthly_mb, p.access_start::text, p.access_end::text,
 	COALESCE(p.access_days,''), COALESCE(p.auto_suspended_by,''),
+	p.filter_profile_id, COALESCE(fp.name,''),
 	COALESCE(p.suspended_by,''), COALESCE(p.updated_by,''), p.updated_at`
 
 // ListUsers - user dari radacct terbaru + policy + pemakaian (hari ini / bulan ini).
@@ -130,6 +133,7 @@ func (s *PolicyService) ListUsers(query string, limit, offset int) ([]UserRow, e
 		) u
 		LEFT JOIN airlink_user_policy p ON p.username = u.username
 		LEFT JOIN airlink_bw_profiles pr ON pr.id = p.bw_profile_id
+		LEFT JOIN airlink_filter_profiles fp ON fp.id = p.filter_profile_id
 		LEFT JOIN LATERAL (
 			SELECT COALESCE(SUM(r.acctinputoctets+r.acctoutputoctets),0) AS today_bytes
 			FROM radacct r WHERE r.username=u.username AND r.acctstarttime >= date_trunc('day', now())
@@ -152,7 +156,7 @@ func (s *PolicyService) ListUsers(query string, limit, offset int) ([]UserRow, e
 			&r.Status, &r.SuspendReason, &r.SuspendedAt, &r.SuspendedUntil,
 			&r.BWProfileID, &r.BWProfileName, &r.RateUp, &r.RateDown,
 			&r.QuotaDailyMB, &r.QuotaMonthlyMB, &r.AccessStart, &r.AccessEnd,
-			&r.AccessDays, &r.AutoSuspendedBy,
+			&r.AccessDays, &r.AutoSuspendedBy, &r.FilterProfileID, &r.FilterProfileName,
 			&r.SuspendedBy, &r.UpdatedBy, &r.UpdatedAt,
 			&r.ActiveSessions, &r.LastSeen,
 			&r.TodayBytes, &r.MonthBytes); err != nil {
@@ -169,11 +173,12 @@ func (s *PolicyService) GetUser(username string) (*UserPolicy, error) {
 	err := s.db.QueryRow(`
 		SELECT `+policyCols+` FROM airlink_user_policy p
 		LEFT JOIN airlink_bw_profiles pr ON pr.id = p.bw_profile_id
+		LEFT JOIN airlink_filter_profiles fp ON fp.id = p.filter_profile_id
 		WHERE p.username = $1`, username).Scan(
 		&p.Status, &p.SuspendReason, &p.SuspendedAt, &p.SuspendedUntil,
 		&p.BWProfileID, &p.BWProfileName, &p.RateUp, &p.RateDown,
 		&p.QuotaDailyMB, &p.QuotaMonthlyMB, &p.AccessStart, &p.AccessEnd,
-		&p.AccessDays, &p.AutoSuspendedBy,
+		&p.AccessDays, &p.AutoSuspendedBy, &p.FilterProfileID, &p.FilterProfileName,
 		&p.SuspendedBy, &p.UpdatedBy, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return &UserPolicy{Username: username, Status: "active"}, nil
@@ -458,7 +463,8 @@ func (s *PolicyService) EffectiveRates(defaultUp, defaultDown string) (map[strin
 			(p.status = 'suspended' AND (p.suspended_until IS NULL OR p.suspended_until > NOW()))
 		FROM (SELECT DISTINCT username FROM radacct WHERE acctstoptime IS NULL) u
 		LEFT JOIN airlink_user_policy p ON p.username = u.username
-		LEFT JOIN airlink_bw_profiles pr ON pr.id = p.bw_profile_id`, defaultUp, defaultDown)
+		LEFT JOIN airlink_bw_profiles pr ON pr.id = p.bw_profile_id
+		LEFT JOIN airlink_filter_profiles fp ON fp.id = p.filter_profile_id`, defaultUp, defaultDown)
 	if err != nil {
 		return nil, err
 	}

@@ -38,7 +38,7 @@ func policyErrStatus(err error) int {
 	for _, m := range []string{
 		"username tidak valid", "format rate", "nama profil tidak valid",
 		"profil masih dipakai", "profil bandwidth tidak ditemukan",
-		"kuota", "format jam", "format hari",
+		"kuota", "format jam", "format hari", "domain", "profil filter", "mode hanya",
 	} {
 		if strings.Contains(msg, m) {
 			return http.StatusBadRequest
