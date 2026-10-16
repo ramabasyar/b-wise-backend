@@ -75,7 +75,7 @@ func (r *MemberRepository) List(f repository.MemberFilter) ([]entity.LibraryMemb
 		return nil, 0, err
 	}
 	var rows []entity.LibraryMember
-	if err := q.Order("created_at DESC").Offset((page - 1) * limit).Limit(limit).Find(&rows).Error; err != nil {
+	if err := q.Omit("photo").Order("created_at DESC").Offset((page - 1) * limit).Limit(limit).Find(&rows).Error; err != nil {
 		return nil, 0, err
 	}
 	return rows, total, nil

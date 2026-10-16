@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/base64"
 	"errors"
 	"strings"
 	"time"
@@ -19,7 +20,11 @@ var (
 	ErrCardTaken      = errors.New("kartu sudah terdaftar pada anggota lain")
 	ErrCardNotActive  = errors.New("kartu tidak aktif")
 	ErrHMACKeyMissing = errors.New("LIBRARY_HMAC_KEY belum dikonfigurasi")
+	ErrPhotoRequired  = errors.New("foto mahasiswa wajib diambil dari webcam")
+	ErrPhotoInvalid   = errors.New("format foto tidak valid")
 )
+
+const maxMemberPhotoBytes = 1024 * 1024
 
 // MemberService — registry anggota & kartu NFC.
 type MemberService struct {
@@ -42,6 +47,22 @@ type CreateMemberInput struct {
 	StudyProgramCode string `json:"study_program_code"`
 	StudyProgramName string `json:"study_program_name"`
 	Email            string `json:"email"`
+	PhotoDataURL     string `json:"photo_data_url"`
+}
+
+func decodeMemberPhoto(dataURL string) ([]byte, string, error) {
+	parts := strings.SplitN(strings.TrimSpace(dataURL), ",", 2)
+	if len(parts) != 2 || !strings.HasPrefix(parts[0], "data:image/jpeg;base64") {
+		return nil, "", ErrPhotoInvalid
+	}
+	data, err := base64.StdEncoding.DecodeString(parts[1])
+	if err != nil || len(data) == 0 || len(data) > maxMemberPhotoBytes {
+		return nil, "", ErrPhotoInvalid
+	}
+	if len(data) < 3 || data[0] != 0xff || data[1] != 0xd8 || data[2] != 0xff {
+		return nil, "", ErrPhotoInvalid
+	}
+	return data, "image/jpeg", nil
 }
 
 func (s *MemberService) audit(actor, action, rtype, rid, reason string, before, after interface{}) {
@@ -60,6 +81,13 @@ func (s *MemberService) Create(in CreateMemberInput, actor string) (*entity.Libr
 	if in.MemberNumber == "" || in.DisplayName == "" {
 		return nil, ErrValidation
 	}
+	if strings.TrimSpace(in.PhotoDataURL) == "" {
+		return nil, ErrPhotoRequired
+	}
+	photo, photoType, err := decodeMemberPhoto(in.PhotoDataURL)
+	if err != nil {
+		return nil, err
+	}
 	if in.MemberType == "" {
 		in.MemberType = "student"
 	}
@@ -70,7 +98,8 @@ func (s *MemberService) Create(in CreateMemberInput, actor string) (*entity.Libr
 		MemberType: in.MemberType, MemberNumber: in.MemberNumber, DisplayName: in.DisplayName,
 		FacultyCode: in.FacultyCode, FacultyName: in.FacultyName,
 		StudyProgramCode: in.StudyProgramCode, StudyProgramName: in.StudyProgramName,
-		Email: in.Email, Status: "active", RegistrationSource: "manual", RegisteredBy: actor,
+		Email: in.Email, Photo: photo, PhotoContentType: photoType,
+		Status: "active", RegistrationSource: "manual", RegisteredBy: actor,
 	}
 	if err := s.members.Create(m); err != nil {
 		return nil, err

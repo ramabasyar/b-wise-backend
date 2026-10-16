@@ -41,6 +41,8 @@ type LibraryMember struct {
 	StudyProgramCode   string `json:"study_program_code" gorm:"type:varchar(32)"`
 	StudyProgramName   string `json:"study_program_name" gorm:"type:varchar(128)"`
 	Email              string `json:"email" gorm:"type:varchar(128)"`
+	Photo              []byte `json:"-" gorm:"type:bytea"`
+	PhotoContentType   string `json:"photo_content_type,omitempty" gorm:"type:varchar(32)"`
 	Status             string `json:"status" gorm:"type:varchar(16);not null;default:'active'`              // active|inactive
 	RegistrationSource string `json:"registration_source" gorm:"type:varchar(16);not null;default:'manual'` // manual|csv_import
 	RegisteredBy       string `json:"registered_by" gorm:"type:varchar(36)"`

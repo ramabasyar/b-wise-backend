@@ -36,7 +36,8 @@ func actorOf(c *gin.Context) string {
 // mapErr memetakan sentinel error service ke HTTP status.
 func mapErr(c *gin.Context, err error) {
 	switch {
-	case isSentinel(err, service.ErrValidation), isSentinel(err, service.ErrBadMethod):
+	case isSentinel(err, service.ErrValidation), isSentinel(err, service.ErrBadMethod),
+		isSentinel(err, service.ErrPhotoRequired), isSentinel(err, service.ErrPhotoInvalid):
 		response.BadRequest(c, err.Error())
 	case isSentinel(err, service.ErrNotFound), isSentinel(err, service.ErrUnknownCredential), isSentinel(err, service.ErrPassInvalid):
 		response.NotFound(c, err.Error())

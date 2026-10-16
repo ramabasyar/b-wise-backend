@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/base64"
 	"errors"
 	"strings"
 	"sync"
@@ -64,6 +65,7 @@ type CheckinResult struct {
 	Faculty      string `json:"faculty,omitempty"`
 	Purpose      string `json:"purpose,omitempty"`
 	Duplicate    bool   `json:"duplicate"`
+	PhotoDataURL string `json:"photo_data_url,omitempty"`
 }
 
 // CheckIn mencatat kunjungan: idempotent per client_event_id,
@@ -240,6 +242,15 @@ func (s *CheckinService) resultFromVisit(v *entity.LibraryVisit, duplicate bool)
 		StudyProgram: v.SnapshotStudyProgram,
 		Faculty:      v.SnapshotFaculty,
 		Duplicate:    duplicate,
+	}
+	if v.MemberID != "" {
+		if member, _ := s.members.GetByID(v.MemberID); member != nil && len(member.Photo) > 0 {
+			contentType := member.PhotoContentType
+			if contentType == "" {
+				contentType = "image/jpeg"
+			}
+			res.PhotoDataURL = "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(member.Photo)
+		}
 	}
 	if v.PurposeID != "" {
 		if ps, _ := s.purposes.ListActive(); ps != nil {
