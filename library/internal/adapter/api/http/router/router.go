@@ -160,6 +160,7 @@ func SetupWithLogger(
 			k.POST("/check-ins", handlers.Kiosk.CheckIn)
 			k.POST("/heartbeat", handlers.Kiosk.Heartbeat)
 			k.GET("/config", handlers.Kiosk.Config)
+			k.GET("/stats", handlers.Kiosk.Stats)
 		}
 	}
 

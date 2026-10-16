@@ -236,5 +236,47 @@ func (s *ReportService) ExportRows(from, to time.Time, visitorType, locationID s
 	return rows, nil
 }
 
+// KioskHourCount — satu baris sebaran per jam.
+type KioskHourCount struct {
+	Hour  int   `json:"hour"`
+	Count int64 `json:"count"`
+}
+
+// KioskDaily — bentuk respons stats kiosk.
+type KioskDaily struct {
+	Today     int64            `json:"today"`
+	Yesterday int64            `json:"yesterday"`
+	Hourly    []KioskHourCount `json:"hourly"`
+}
+
+// KioskDailyReport — ringkasan ringan untuk layar kiosk: total hari ini,
+// total kemarin (untuk delta), dan sebaran kunjungan per jam hari ini (WIB).
+func (s *ReportService) KioskDailyReport() (*KioskDaily, error) {
+	now := time.Now().In(wib)
+	todayFrom := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, wib)
+	todayTo := todayFrom.Add(24 * time.Hour)
+	yFrom := todayFrom.Add(-24 * time.Hour)
+	out := &KioskDaily{Hourly: []KioskHourCount{}}
+	if err := s.scope(todayFrom.UTC(), todayTo.UTC()).Count(&out.Today).Error; err != nil {
+		return nil, err
+	}
+	if err := s.scope(yFrom.UTC(), todayFrom.UTC()).Count(&out.Yesterday).Error; err != nil {
+		return nil, err
+	}
+	rows := []struct {
+		H int64 `gorm:"column:h"`
+		C int64 `gorm:"column:c"`
+	}{}
+	if err := s.scope(todayFrom.UTC(), todayTo.UTC()).
+		Select("EXTRACT(HOUR FROM check_in_at AT TIME ZONE 'Asia/Jakarta') AS h, COUNT(*) AS c").
+		Group("h").Order("h").Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		out.Hourly = append(out.Hourly, KioskHourCount{Hour: int(r.H), Count: r.C})
+	}
+	return out, nil
+}
+
 // WIB mengekspos zona waktu laporan untuk pemakaian lintas package.
 func WIB() *time.Location { return wib }

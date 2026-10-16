@@ -148,6 +148,7 @@ func main() {
 				service.NewCheckinService(memberRepo, cardRepo, guestRepo, passRepo, visitRepo, purposeRepo, locationRepo, auditRepo, hmacKey),
 				kioskRepo,
 				purposeRepo,
+				reportSvc,
 			),
 			KioskAuth: middleware.NewKioskAuth(kioskRepo),
 		}

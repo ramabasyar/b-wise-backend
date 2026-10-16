@@ -2,7 +2,9 @@ package handler
 
 import (
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -17,10 +19,11 @@ type KioskHandler struct {
 	checkin  *service.CheckinService
 	kiosks   repository.KioskRepository
 	purposes repository.VisitPurposeRepository
+	reports  *service.ReportService
 }
 
-func NewKioskHandler(cs *service.CheckinService, k repository.KioskRepository, p repository.VisitPurposeRepository) *KioskHandler {
-	return &KioskHandler{checkin: cs, kiosks: k, purposes: p}
+func NewKioskHandler(cs *service.CheckinService, k repository.KioskRepository, p repository.VisitPurposeRepository, r *service.ReportService) *KioskHandler {
+	return &KioskHandler{checkin: cs, kiosks: k, purposes: p, reports: r}
 }
 
 func kioskFromContext(c *gin.Context) *entity.LibraryKiosk {
@@ -29,6 +32,13 @@ func kioskFromContext(c *gin.Context) *entity.LibraryKiosk {
 		Code:       ctxString(c, "kiosk_code"),
 		LocationID: ctxString(c, "location_id"),
 	}
+}
+
+func envDefault(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }
 
 // CheckIn — POST /api/library/kiosk/v1/check-ins
@@ -60,7 +70,7 @@ func (h *KioskHandler) CheckIn(c *gin.Context) {
 // Heartbeat — POST /api/library/kiosk/v1/heartbeat
 func (h *KioskHandler) Heartbeat(c *gin.Context) {
 	var body struct {
-		AppVersion string `json:"app_version"`
+		AppVersion string "json:\"app_version\""
 	}
 	_ = c.ShouldBindJSON(&body)
 	k := kioskFromContext(c)
@@ -71,6 +81,17 @@ func (h *KioskHandler) Heartbeat(c *gin.Context) {
 	response.Success(c, gin.H{"ok": true})
 }
 
+// Stats — GET /api/library/kiosk/v1/stats
+// Ringkasan hari ini untuk layar kiosk (auth device kiosk).
+func (h *KioskHandler) Stats(c *gin.Context) {
+	out, err := h.reports.KioskDailyReport()
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.Success(c, out)
+}
+
 // Config — GET /api/library/kiosk/v1/config
 func (h *KioskHandler) Config(c *gin.Context) {
 	purposes, err := h.purposes.ListActive()
@@ -79,8 +100,8 @@ func (h *KioskHandler) Config(c *gin.Context) {
 		return
 	}
 	type purposeOut struct {
-		Code string `json:"code"`
-		Name string `json:"name"`
+		Code string "json:\"code\""
+		Name string "json:\"name\""
 	}
 	out := make([]purposeOut, 0, len(purposes))
 	for _, p := range purposes {
@@ -90,6 +111,10 @@ func (h *KioskHandler) Config(c *gin.Context) {
 		"kiosk_code":  ctxString(c, "kiosk_code"),
 		"location_id": ctxString(c, "location_id"),
 		"purposes":    out,
+		"info": gin.H{
+			"open_hours":   strings.Split(envDefault("LIBRARY_OPEN_HOURS", "Senin – Jumat: 08.00 – 16.00|Sabtu: 08.00 – 12.00"), "|"),
+			"announcement": envDefault("LIBRARY_ANNOUNCEMENT", "Pendaftaran anggota baru dibuka sepanjang bulan Oktober."),
+		},
 	})
 }
 
