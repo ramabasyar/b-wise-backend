@@ -12,7 +12,7 @@ import (
 	"github.com/ebfe/scard"
 )
 
-const version = "0.2.0"
+const version = "0.2.1"
 
 const defaultKioskURL = "https://stg-bwise.binawan.ac.id/kiosk/library"
 
@@ -73,9 +73,9 @@ func main() {
 		openKiosk(*flagURL)
 	}
 
-	rs := scard.ReaderState{Reader: name, CurrentState: scard.StateUnaware}
+	states := []scard.ReaderState{{Reader: name, CurrentState: scard.StateUnaware}}
 	for {
-		if err := ctx.GetStatusChange([]scard.ReaderState{rs}, 500*time.Millisecond); err != nil {
+		if err := ctx.GetStatusChange(states, 500*time.Millisecond); err != nil {
 			if errors.Is(err, scard.ErrTimeout) {
 				continue
 			}
@@ -87,13 +87,13 @@ func main() {
 			}
 			log.Fatalf("GetStatusChange: %v", err)
 		}
-		wasPresent := rs.CurrentState&scard.StatePresent != 0
-		nowPresent := rs.EventState&scard.StatePresent != 0
-		atr := append([]byte(nil), rs.Atr...)
+		wasPresent := states[0].CurrentState&scard.StatePresent != 0
+		nowPresent := states[0].EventState&scard.StatePresent != 0
+		atr := append([]byte(nil), states[0].Atr...)
 		if !wasPresent && nowPresent {
 			handleTap(ctx, name, atr)
 		}
-		rs.CurrentState = rs.EventState
+		states[0].CurrentState = states[0].EventState
 	}
 }
 
