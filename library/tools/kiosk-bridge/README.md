@@ -1,6 +1,6 @@
 # Library Visitor (library_visitor.exe)
 
-Bridge PC/SC untuk kiosk perpustakaan Binawan Library: saat dijalankan otomatis membuka halaman kiosk (Edge fullscreen kiosk mode, fallback browser default) lalu membuat reader ACS ACR122U bekerja seperti USB scanner keyboard — UID kartu NFC di-inject sebagai ketikan (+ Enter) ke jendela aktif. Halaman kiosk \`/kiosk/library\` tidak perlu diubah sama sekali.
+Bridge PC/SC untuk kiosk perpustakaan Binawan Library: saat dijalankan otomatis membuka halaman kiosk di Edge app fullscreen dengan profil persisten khusus, lalu membuat reader ACS ACR122U bekerja seperti USB scanner keyboard — UID kartu NFC di-inject sebagai ketikan (+ Enter) ke jendela aktif. Halaman kiosk \`/kiosk/library\` tidak perlu diubah sama sekali.
 
 ## Cara kerja
 - Loop \`SCardGetStatusChange\` (timeout 500ms), edge-trigger pada
@@ -13,7 +13,9 @@ Bridge PC/SC untuk kiosk perpustakaan Binawan Library: saat dijalankan otomatis 
   jeda \`--delay\` (default 8ms), lalu Enter (\`--no-enter\` untuk menonaktifkan).
 - Beep \`MessageBeep\` sebagai umpan balik (\`--no-beep\` untuk menonaktifkan).
 - Auto-open browser saat start (\`--url\`, default staging kiosk; \`--no-browser\`
-  menonaktifkan) via \`cmd /c start msedge --kiosk ...\`.
+  menonaktifkan) memakai Edge app fullscreen dan profil tetap di
+  \`%LOCALAPPDATA%\\BWise\\LibraryKiosk\\EdgeProfile\`. Jangan buka URL
+  di Edge kiosk bawaan/Guest/InPrivate: storage kode+secret akan hilang setelah ditutup.
 - Single-instance via named mutex \`Local\\bwise_library_visitor\`
   (instance kedua langsung keluar dengan pesan).
 

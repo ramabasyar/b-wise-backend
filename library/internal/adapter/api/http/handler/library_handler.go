@@ -339,6 +339,7 @@ func (h *LibraryHandler) ProvisionKiosk(c *gin.Context) {
 		mapErr(c, err)
 		return
 	}
+	c.Header("Cache-Control", "no-store")
 	response.Created(c, out) // secret hanya tampil sekali di respons ini
 }
 
@@ -350,6 +351,17 @@ func (h *LibraryHandler) ListKiosks(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"data": rows})
+}
+
+// RotateKioskSecret — POST /api/library/v1/kiosks/:id/rotate-secret
+func (h *LibraryHandler) RotateKioskSecret(c *gin.Context) {
+	out, err := h.kiosks.RotateSecret(c.Param("id"), actorOf(c))
+	if err != nil {
+		mapErr(c, err)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	response.Success(c, out)
 }
 
 // SetKioskStatus — PATCH /api/library/v1/kiosks/:id/status  {status: active|disabled}

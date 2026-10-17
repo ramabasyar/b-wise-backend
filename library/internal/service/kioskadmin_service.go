@@ -63,6 +63,29 @@ func (s *KioskAdminService) List() ([]entity.LibraryKiosk, error) {
 	return s.kiosks.List()
 }
 
+// RotateSecret mengganti secret yang hilang; hash lama langsung tidak berlaku.
+// Nilai baru hanya dikembalikan sekali kepada operator yang berwenang.
+func (s *KioskAdminService) RotateSecret(id, actor string) (*KioskProvisioned, error) {
+	k, err := s.kiosks.GetByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if k == nil {
+		return nil, ErrNotFound
+	}
+	raw := make([]byte, 24)
+	if _, err := rand.Read(raw); err != nil {
+		return nil, err
+	}
+	secret := base64.RawURLEncoding.EncodeToString(raw)
+	k.CredentialHash = credhash.HashSecret(secret)
+	if err := s.kiosks.Update(k); err != nil {
+		return nil, err
+	}
+	writeAudit(s.audits, actor, "kiosk.secret.rotate", "library_kiosks", k.ID, "lost_secret")
+	return &KioskProvisioned{Kiosk: k, Secret: secret}, nil
+}
+
 // SetStatus mengaktifkan/menonaktifkan kiosk. Kiosk nonaktif langsung ditolak
 // oleh KioskAuth (403) — cocok untuk perangkat rusak/diganti sambil menjaga riwayat.
 func (s *KioskAdminService) SetStatus(id, status, actor string) (*entity.LibraryKiosk, error) {

@@ -12,7 +12,7 @@ import (
 	"github.com/ebfe/scard"
 )
 
-const version = "0.2.1"
+const version = "0.2.2"
 
 const defaultKioskURL = "https://stg-bwise.binawan.ac.id/kiosk/library"
 

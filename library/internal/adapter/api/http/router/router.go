@@ -148,6 +148,7 @@ func SetupWithLogger(
 			api.GET("/reports/export.csv", libPerm.RequirePermission("library.reports.export"), h.ReportExport)
 			api.POST("/kiosks", libPerm.RequirePermission("library.kiosks.manage"), h.ProvisionKiosk)
 			api.GET("/kiosks", libPerm.RequirePermission("library.kiosks.manage"), h.ListKiosks)
+			api.POST("/kiosks/:id/rotate-secret", libPerm.RequirePermission("library.kiosks.manage"), h.RotateKioskSecret)
 			api.PATCH("/kiosks/:id/status", libPerm.RequirePermission("library.kiosks.manage"), h.SetKioskStatus)
 			api.DELETE("/kiosks/:id", libPerm.RequirePermission("library.kiosks.manage"), h.DeleteKiosk)
 			api.GET("/downloads/visitor-app", libPerm.RequirePermission("library.kiosks.manage"), h.DownloadVisitorApp)

@@ -5,7 +5,9 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 	"time"
 	"unsafe"
@@ -59,20 +61,50 @@ func singleInstance() bool {
 	return true
 }
 
-// openKiosk membuka URL di Edge kiosk fullscreen; fallback browser default.
+// openKiosk memakai profil Edge persisten khusus perangkat ini.
+// Edge --kiosk berjalan InPrivate dan menghapus localStorage saat ditutup.
 func openKiosk(url string) {
-	edge := exec.Command("cmd", "/c", "start", "", "msedge",
-		"--kiosk", url, "--edge-kiosk-type=fullscreen", "--no-first-run")
-	if err := edge.Run(); err == nil {
-		log.Printf("browser kiosk dibuka (Edge fullscreen): %s", url)
+	localAppData := os.Getenv("LOCALAPPDATA")
+	if localAppData == "" {
+		log.Printf("LOCALAPPDATA tidak tersedia; profil kiosk persisten tidak dapat dibuat. Buka manual: %s", url)
 		return
 	}
-	def := exec.Command("cmd", "/c", "start", "", url)
-	if err := def.Run(); err != nil {
-		log.Printf("gagal membuka browser otomatis (%v) - buka manual: %s", err, url)
+	profileDir := filepath.Join(localAppData, "BWise", "LibraryKiosk", "EdgeProfile")
+	if err := os.MkdirAll(profileDir, 0700); err != nil {
+		log.Printf("profil Edge tidak dapat dibuat (%v). Buka manual: %s", err, url)
 		return
 	}
-	log.Printf("browser default dibuka: %s (Edge tidak ditemukan)", url)
+
+	paths := []string{}
+	for _, key := range []string{"ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA"} {
+		if root := os.Getenv(key); root != "" {
+			paths = append(paths, filepath.Join(root, "Microsoft", "Edge", "Application", "msedge.exe"))
+		}
+	}
+	if path, err := exec.LookPath("msedge.exe"); err == nil {
+		paths = append(paths, path)
+	}
+	for _, path := range paths {
+		if _, err := os.Stat(path); err != nil {
+			continue
+		}
+		// --app + --start-fullscreen = layar penuh tanpa sesi InPrivate.
+		// --user-data-dir mengisolasi storage dari profil Edge personal.
+		cmd := exec.Command(path,
+			"--app="+url,
+			"--start-fullscreen",
+			"--user-data-dir="+profileDir,
+			"--no-first-run",
+		)
+		if err := cmd.Start(); err != nil {
+			log.Printf("gagal membuka Edge dari %s: %v", path, err)
+			continue
+		}
+		_ = cmd.Process.Release()
+		log.Printf("browser kiosk dibuka dengan profil persisten: %s", profileDir)
+		return
+	}
+	log.Printf("Microsoft Edge tidak ditemukan. Pasang Edge lalu jalankan lagi; URL: %s", url)
 }
 
 func sendKey(vk uint16) error {
