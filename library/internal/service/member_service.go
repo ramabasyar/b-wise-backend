@@ -203,21 +203,33 @@ func (s *MemberService) EnrollCard(memberID string, in EnrollCardInput, actor st
 	}
 	lookup := credhash.Lookup(s.hmacKey, cred)
 
-	// Kartu sudah terdaftar milik siapa pun (aktif maupun riwayat) → tolak.
+	// Kartu dengan UID sama sudah ada di sistem:
+	// - active/lost/revoked → tolak (dipakai anggota lain, atau kartu hilang yang dicabut).
+	// - replaced (bekas salah-tap / ganti kartu) → alihkan ke pemilik baru;
+	//   baris tetap satu per kartu fisik sehingga lookup unik terjaga.
 	if existing, _ := s.cards.GetByLookup(lookup); existing != nil {
-		return nil, ErrCardTaken
-	}
-	// Satu kartu aktif: tandai kartu lama replaced.
-	if old, _ := s.cards.ActiveByMember(memberID); old != nil {
-		now := time.Now()
-		old.Status = "replaced"
-		old.RevokedAt = &now
-		old.RevokeReason = "replacement"
-		old.RevokedBy = actor
-		if err := s.cards.Update(old); err != nil {
+		if existing.Status != "replaced" {
+			return nil, ErrCardTaken
+		}
+		if err := s.retireActiveCard(memberID, actor); err != nil {
 			return nil, err
 		}
-		s.audit(actor, "card.replaced", "library_member_cards", old.ID, "replacement", nil, nil)
+		existing.MemberID = memberID
+		existing.Status = "active"
+		existing.RevokedAt = nil
+		existing.RevokeReason = ""
+		existing.RevokedBy = ""
+		existing.RegisteredBy = actor
+		if err := s.cards.Update(existing); err != nil {
+			return nil, err
+		}
+		s.audit(actor, "card.reassigned", "library_member_cards", existing.ID, "reassign-salah-tap", nil, nil)
+		return existing, nil
+	}
+
+	// Satu kartu aktif: tandai kartu lama replaced.
+	if err := s.retireActiveCard(memberID, actor); err != nil {
+		return nil, err
 	}
 	card := &entity.LibraryMemberCard{
 		MemberID: memberID, CardType: in.CardType, CardTechnology: in.CardTechnology, ReaderMode: in.ReaderMode,
@@ -229,6 +241,24 @@ func (s *MemberService) EnrollCard(memberID string, in EnrollCardInput, actor st
 	}
 	s.audit(actor, "card.enroll", "library_member_cards", card.ID, "", nil, nil)
 	return card, nil
+}
+
+// retireActiveCard menandai kartu aktif anggota sebagai replaced (ganti kartu).
+func (s *MemberService) retireActiveCard(memberID, actor string) error {
+	old, err := s.cards.ActiveByMember(memberID)
+	if err != nil || old == nil {
+		return err
+	}
+	now := time.Now()
+	old.Status = "replaced"
+	old.RevokedAt = &now
+	old.RevokeReason = "replacement"
+	old.RevokedBy = actor
+	if err := s.cards.Update(old); err != nil {
+		return err
+	}
+	s.audit(actor, "card.replaced", "library_member_cards", old.ID, "replacement", nil, nil)
+	return nil
 }
 
 // RevokeCard menonaktifkan kartu (lost|revoked|replaced) dengan alasan.
