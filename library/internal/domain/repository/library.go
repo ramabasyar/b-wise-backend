@@ -66,10 +66,12 @@ type KioskFilter struct {
 
 type KioskRepository interface {
 	Create(k *entity.LibraryKiosk) error
+	Update(k *entity.LibraryKiosk) error
 	GetByCode(code string) (*entity.LibraryKiosk, error)
 	GetByID(id string) (*entity.LibraryKiosk, error)
 	List() ([]entity.LibraryKiosk, error)
 	Touch(id, appVersion string) error
+	Delete(id string) error
 }
 
 // ===== Kunjungan =====
@@ -93,6 +95,7 @@ type VisitRepository interface {
 	GetByClientEventID(id string) (*entity.LibraryVisit, error)
 	RecentByMemberLocation(memberID, locationID string, within time.Duration) (*entity.LibraryVisit, error)
 	RecentByGuestLocation(guestID, locationID string, within time.Duration) (*entity.LibraryVisit, error)
+	CountByKiosk(kioskID string) (int64, error)
 	List(filter VisitFilter) ([]entity.LibraryVisit, int64, error)
 }
 

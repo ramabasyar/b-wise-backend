@@ -41,7 +41,7 @@ func mapErr(c *gin.Context, err error) {
 		response.BadRequest(c, err.Error())
 	case isSentinel(err, service.ErrNotFound), isSentinel(err, service.ErrUnknownCredential), isSentinel(err, service.ErrPassInvalid):
 		response.NotFound(c, err.Error())
-	case isSentinel(err, service.ErrMemberExists), isSentinel(err, service.ErrCardTaken):
+	case isSentinel(err, service.ErrMemberExists), isSentinel(err, service.ErrCardTaken), isSentinel(err, service.ErrKioskHasVisits):
 		response.Conflict(c, err.Error())
 	case isSentinel(err, service.ErrMemberInactive), isSentinel(err, service.ErrCardNotActive):
 		response.Forbidden(c, err.Error())
@@ -350,6 +350,32 @@ func (h *LibraryHandler) ListKiosks(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"data": rows})
+}
+
+// SetKioskStatus — PATCH /api/library/v1/kiosks/:id/status  {status: active|disabled}
+func (h *LibraryHandler) SetKioskStatus(c *gin.Context) {
+	var in struct {
+		Status string "json:\"status\""
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.BadRequest(c, "payload tidak valid")
+		return
+	}
+	k, err := h.kiosks.SetStatus(c.Param("id"), in.Status, actorOf(c))
+	if err != nil {
+		mapErr(c, err)
+		return
+	}
+	response.Success(c, k)
+}
+
+// DeleteKiosk — DELETE /api/library/v1/kiosks/:id (hanya kiosk tanpa riwayat kunjungan)
+func (h *LibraryHandler) DeleteKiosk(c *gin.Context) {
+	if err := h.kiosks.Delete(c.Param("id"), actorOf(c)); err != nil {
+		mapErr(c, err)
+		return
+	}
+	response.Success(c, gin.H{"deleted": true})
 }
 
 var _ = strconv.Itoa // jaga import strconv bila atoiDefault dipindah

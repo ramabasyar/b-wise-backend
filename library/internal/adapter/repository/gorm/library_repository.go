@@ -309,6 +309,12 @@ func (r *KioskRepository) List() ([]entity.LibraryKiosk, error) {
 	return rows, nil
 }
 
+func (r *KioskRepository) Update(k *entity.LibraryKiosk) error { return r.db.Save(k).Error }
+
+func (r *KioskRepository) Delete(id string) error {
+	return r.db.Delete(&entity.LibraryKiosk{}, "id = ?", id).Error
+}
+
 func (r *KioskRepository) Touch(id, appVersion string) error {
 	updates := map[string]interface{}{"last_seen_at": time.Now()}
 	if appVersion != "" {
@@ -352,6 +358,14 @@ func (r *VisitRepository) GetByClientEventID(id string) (*entity.LibraryVisit, e
 		return nil, err
 	}
 	return &v, nil
+}
+
+func (r *VisitRepository) CountByKiosk(kioskID string) (int64, error) {
+	var n int64
+	if err := r.db.Model(&entity.LibraryVisit{}).Where("kiosk_id = ?", kioskID).Count(&n).Error; err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
 func (r *VisitRepository) recent(where string, args []interface{}, within time.Duration) (*entity.LibraryVisit, error) {

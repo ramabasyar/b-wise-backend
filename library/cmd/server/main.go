@@ -139,7 +139,7 @@ func main() {
 				service.NewMemberService(memberRepo, cardRepo, auditRepo, hmacKey),
 				service.NewVisitService(visitRepo, memberRepo, purposeRepo, auditRepo),
 				service.NewGuestService(guestRepo, passRepo, auditRepo, hmacKey),
-				service.NewKioskAdminService(kioskRepo, auditRepo),
+				service.NewKioskAdminService(kioskRepo, visitRepo, auditRepo),
 				purposeRepo,
 				locationRepo,
 				reportSvc,
