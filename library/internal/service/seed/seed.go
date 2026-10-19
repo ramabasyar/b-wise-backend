@@ -84,6 +84,12 @@ func FacultiesAndPrograms(db *gorm.DB, log func(string, ...interface{})) {
 			Attrs(entity.LibraryStudyProgram{FacultyCode: p.FacultyCode, Name: p.Name, SortOrder: p.SortOrder, IsActive: p.IsActive}).
 			FirstOrCreate(&out).Error; err != nil {
 			log("[seed] program %s gagal: %v", p.Code, err)
+		} else if out.IsActive != p.IsActive {
+			// GORM meng-omit bool false (zero value) saat INSERT karena kolom punya default true —
+			// koreksi eksplisit agar prodi nonaktif benar-benar tersimpan nonaktif.
+			if err := db.Model(&out).Update("is_active", p.IsActive).Error; err != nil {
+				log("[seed] program %s gagal set is_active: %v", p.Code, err)
+			}
 		}
 	}
 	log("[seed] referensi fakultas (6) & prodi (%d, %d nonaktif) siap", len(programs), 6)
