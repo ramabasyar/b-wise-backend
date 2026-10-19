@@ -127,6 +127,30 @@ type LibraryVisitPurpose struct {
 
 func (LibraryVisitPurpose) TableName() string { return "library_visit_purposes" }
 
+// LibraryFaculty — fakultas (referensi resmi SIAKAD).
+type LibraryFaculty struct {
+	Base
+	Code      string `json:"code" gorm:"uniqueIndex;type:varchar(16);not null"`
+	Name      string `json:"name" gorm:"type:varchar(128);not null"`
+	ShortName string `json:"short_name" gorm:"type:varchar(32)"`
+	SortOrder int    `json:"sort_order"`
+	IsActive  bool   `json:"is_active" gorm:"not null;default:true"`
+}
+
+func (LibraryFaculty) TableName() string { return "library_faculties" }
+
+// LibraryStudyProgram — program studi (referensi; code = 2 digit pertama NIM, suffix P utk profesi).
+type LibraryStudyProgram struct {
+	Base
+	FacultyCode string `json:"faculty_code" gorm:"type:varchar(16);index;not null"`
+	Code        string `json:"code" gorm:"uniqueIndex;type:varchar(16);not null"`
+	Name        string `json:"name" gorm:"type:varchar(128);not null"`
+	SortOrder   int    `json:"sort_order"`
+	IsActive    bool   `json:"is_active" gorm:"not null;default:true"`
+}
+
+func (LibraryStudyProgram) TableName() string { return "library_study_programs" }
+
 // LibraryVisit — record kunjungan.
 type LibraryVisit struct {
 	Base

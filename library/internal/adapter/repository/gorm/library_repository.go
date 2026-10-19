@@ -244,6 +244,86 @@ func (r *VisitPurposeRepository) GetByCode(code string) (*entity.LibraryVisitPur
 
 // ===== Location =====
 
+type FacultyRepository struct{ db *gorm.DB }
+
+func NewFacultyRepository(db *gorm.DB) repository.FacultyRepository {
+	return &FacultyRepository{db: db}
+}
+
+func (r *FacultyRepository) List() ([]entity.LibraryFaculty, error) {
+	var rows []entity.LibraryFaculty
+	if err := r.db.Order("sort_order ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (r *FacultyRepository) GetByCode(code string) (*entity.LibraryFaculty, error) {
+	var f entity.LibraryFaculty
+	if err := r.db.First(&f, "code = ?", code).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &f, nil
+}
+
+func (r *FacultyRepository) GetByName(name string) (*entity.LibraryFaculty, error) {
+	var f entity.LibraryFaculty
+	if err := r.db.Where("lower(name) = lower(?)", name).First(&f).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &f, nil
+}
+
+type StudyProgramRepository struct{ db *gorm.DB }
+
+func NewStudyProgramRepository(db *gorm.DB) repository.StudyProgramRepository {
+	return &StudyProgramRepository{db: db}
+}
+
+func (r *StudyProgramRepository) List() ([]entity.LibraryStudyProgram, error) {
+	var rows []entity.LibraryStudyProgram
+	if err := r.db.Order("sort_order ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (r *StudyProgramRepository) ListActive() ([]entity.LibraryStudyProgram, error) {
+	var rows []entity.LibraryStudyProgram
+	if err := r.db.Where("is_active = ?", true).Order("sort_order ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (r *StudyProgramRepository) GetByCode(code string) (*entity.LibraryStudyProgram, error) {
+	var p entity.LibraryStudyProgram
+	if err := r.db.Where("is_active = ?", true).First(&p, "code = ?", code).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &p, nil
+}
+
+func (r *StudyProgramRepository) GetByName(name string) (*entity.LibraryStudyProgram, error) {
+	var p entity.LibraryStudyProgram
+	if err := r.db.Where("is_active = ? AND lower(name) = lower(?)", true, name).First(&p).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &p, nil
+}
+
 type LocationRepository struct{ db *gorm.DB }
 
 func NewLocationRepository(db *gorm.DB) repository.LocationRepository {

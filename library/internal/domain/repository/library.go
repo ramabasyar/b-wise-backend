@@ -55,6 +55,19 @@ type VisitPurposeRepository interface {
 	GetByCode(code string) (*entity.LibraryVisitPurpose, error)
 }
 
+type FacultyRepository interface {
+	List() ([]entity.LibraryFaculty, error)
+	GetByCode(code string) (*entity.LibraryFaculty, error)
+	GetByName(name string) (*entity.LibraryFaculty, error)
+}
+
+type StudyProgramRepository interface {
+	List() ([]entity.LibraryStudyProgram, error)
+	ListActive() ([]entity.LibraryStudyProgram, error)
+	GetByCode(code string) (*entity.LibraryStudyProgram, error)
+	GetByName(name string) (*entity.LibraryStudyProgram, error)
+}
+
 type LocationRepository interface {
 	GetDefault() (*entity.LibraryLocation, error)
 	List() ([]entity.LibraryLocation, error)

@@ -141,6 +141,7 @@ func SetupWithLogger(
 			api.POST("/guests/:id/passes", libPerm.RequirePermission("library.guest_passes.issue"), h.IssuePass)
 			api.POST("/guest-passes/:id/revoke", libPerm.RequirePermission("library.guest_passes.revoke"), h.RevokePass)
 			api.GET("/purposes", libPerm.RequirePermission("library.visits.read"), h.ListPurposes)
+			api.GET("/faculties", libPerm.RequirePermission("library.members.read"), h.ListFaculties)
 			api.GET("/locations", libPerm.RequirePermission("library.locations.manage"), h.ListLocations)
 			api.GET("/reports/summary", libPerm.RequirePermission("library.reports.read"), h.ReportSummary)
 			api.GET("/reports/timeseries", libPerm.RequirePermission("library.reports.read"), h.ReportTimeseries)

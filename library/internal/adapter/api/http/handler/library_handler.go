@@ -58,15 +58,18 @@ type LibraryHandler struct {
 	kiosks    *service.KioskAdminService
 	purposes  repository.VisitPurposeRepository
 	locations repository.LocationRepository
+	faculties repository.FacultyRepository
+	programs  repository.StudyProgramRepository
 	reports   *service.ReportService
 }
 
 func NewLibraryHandler(
 	m *service.MemberService, v *service.VisitService, g *service.GuestService,
 	k *service.KioskAdminService, p repository.VisitPurposeRepository, l repository.LocationRepository,
+	fr repository.FacultyRepository, pr repository.StudyProgramRepository,
 	r *service.ReportService,
 ) *LibraryHandler {
-	return &LibraryHandler{members: m, visits: v, guests: g, kiosks: k, purposes: p, locations: l, reports: r}
+	return &LibraryHandler{members: m, visits: v, guests: g, kiosks: k, purposes: p, locations: l, faculties: fr, programs: pr, reports: r}
 }
 
 // ===== Anggota =====
@@ -311,6 +314,42 @@ func (h *LibraryHandler) ListPurposes(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"data": rows})
+}
+
+// ListFaculties — GET /api/library/v1/faculties (fakultas + prodi aktif, utk dropdown anggota)
+func (h *LibraryHandler) ListFaculties(c *gin.Context) {
+	faks, err := h.faculties.List()
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	progs, err := h.programs.ListActive()
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	type progOut struct {
+		Code string `json:"code"`
+		Name string `json:"name"`
+	}
+	byFaculty := map[string][]progOut{}
+	for _, p := range progs {
+		byFaculty[p.FacultyCode] = append(byFaculty[p.FacultyCode], progOut{Code: p.Code, Name: p.Name})
+	}
+	type facultyOut struct {
+		Code          string    `json:"code"`
+		Name          string    `json:"name"`
+		ShortName     string    `json:"short_name"`
+		StudyPrograms []progOut `json:"study_programs"`
+	}
+	out := []facultyOut{}
+	for _, f := range faks {
+		if !f.IsActive || len(byFaculty[f.Code]) == 0 {
+			continue
+		}
+		out = append(out, facultyOut{Code: f.Code, Name: f.Name, ShortName: f.ShortName, StudyPrograms: byFaculty[f.Code]})
+	}
+	response.Success(c, gin.H{"data": out})
 }
 
 // ListLocations — GET /api/library/v1/locations

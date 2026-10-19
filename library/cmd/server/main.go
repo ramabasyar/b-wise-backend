@@ -80,6 +80,8 @@ func main() {
 				&entity.LibraryGuest{},
 				&entity.LibraryGuestPass{},
 				&entity.LibraryVisitPurpose{},
+				&entity.LibraryFaculty{},
+				&entity.LibraryStudyProgram{},
 				&entity.LibraryVisit{},
 				&entity.LibraryAuditLog{},
 			)
@@ -88,6 +90,7 @@ func main() {
 			}
 			zapLogger.Info("[startup] library schema migrated (10 tables)")
 			seed.Defaults(db, func(f string, a ...interface{}) { zapLogger.Info(fmt.Sprintf(f, a...)) })
+			seed.FacultiesAndPrograms(db, func(f string, a ...interface{}) { zapLogger.Info(fmt.Sprintf(f, a...)) })
 		}
 	}
 
@@ -128,6 +131,8 @@ func main() {
 		guestRepo := gormrepo.NewGuestRepository(db)
 		passRepo := gormrepo.NewGuestPassRepository(db)
 		purposeRepo := gormrepo.NewVisitPurposeRepository(db)
+		facultyRepo := gormrepo.NewFacultyRepository(db)
+		programRepo := gormrepo.NewStudyProgramRepository(db)
 		visitRepo := gormrepo.NewVisitRepository(db)
 		locationRepo := gormrepo.NewLocationRepository(db)
 		kioskRepo := gormrepo.NewKioskRepository(db)
@@ -136,12 +141,14 @@ func main() {
 
 		handlers = &router.Handlers{
 			Library: handler.NewLibraryHandler(
-				service.NewMemberService(memberRepo, cardRepo, auditRepo, hmacKey),
+				service.NewMemberService(memberRepo, cardRepo, auditRepo, facultyRepo, programRepo, hmacKey),
 				service.NewVisitService(visitRepo, memberRepo, purposeRepo, auditRepo),
 				service.NewGuestService(guestRepo, passRepo, auditRepo, hmacKey),
 				service.NewKioskAdminService(kioskRepo, visitRepo, auditRepo),
 				purposeRepo,
 				locationRepo,
+				facultyRepo,
+				programRepo,
 				reportSvc,
 			),
 			Kiosk: handler.NewKioskHandler(

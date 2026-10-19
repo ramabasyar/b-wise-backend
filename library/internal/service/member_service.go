@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 // Sentinel errors — handler memetakan ke HTTP status.
 var (
 	ErrValidation     = errors.New("data tidak lengkap atau tidak valid")
+	ErrUnknownRef     = errors.New("fakultas/prodi tidak dikenal — pilih dari daftar resmi")
 	ErrNotFound       = errors.New("data tidak ditemukan")
 	ErrMemberExists   = errors.New("NIM sudah terdaftar")
 	ErrMemberInactive = errors.New("anggota tidak aktif")
@@ -28,14 +30,87 @@ const maxMemberPhotoBytes = 1024 * 1024
 
 // MemberService — registry anggota & kartu NFC.
 type MemberService struct {
-	members repository.MemberRepository
-	cards   repository.MemberCardRepository
-	audits  repository.AuditLogRepository
-	hmacKey string
+	members   repository.MemberRepository
+	cards     repository.MemberCardRepository
+	audits    repository.AuditLogRepository
+	faculties repository.FacultyRepository
+	programs  repository.StudyProgramRepository
+	hmacKey   string
 }
 
-func NewMemberService(m repository.MemberRepository, c repository.MemberCardRepository, a repository.AuditLogRepository, hmacKey string) *MemberService {
-	return &MemberService{members: m, cards: c, audits: a, hmacKey: hmacKey}
+func NewMemberService(m repository.MemberRepository, c repository.MemberCardRepository, a repository.AuditLogRepository, f repository.FacultyRepository, p repository.StudyProgramRepository, hmacKey string) *MemberService {
+	return &MemberService{members: m, cards: c, audits: a, faculties: f, programs: p, hmacKey: hmacKey}
+}
+
+// resolveAffiliation menormalkan fakultas/prodi dari referensi resmi (strict utk nilai baru).
+func (s *MemberService) resolveAffiliation(in *CreateMemberInput) error {
+	in.FacultyCode = strings.TrimSpace(in.FacultyCode)
+	in.FacultyName = strings.TrimSpace(in.FacultyName)
+	in.StudyProgramCode = strings.TrimSpace(in.StudyProgramCode)
+	in.StudyProgramName = strings.TrimSpace(in.StudyProgramName)
+	var prog *entity.LibraryStudyProgram
+	if in.StudyProgramCode != "" {
+		if s.programs == nil {
+			return nil
+		}
+		p, err := s.programs.GetByCode(in.StudyProgramCode)
+		if err != nil {
+			return err
+		}
+		if p == nil {
+			return fmt.Errorf("%w: prodi %q", ErrUnknownRef, in.StudyProgramCode)
+		}
+		prog = p
+	} else if in.StudyProgramName != "" {
+		if s.programs == nil {
+			return nil
+		}
+		p, err := s.programs.GetByName(in.StudyProgramName)
+		if err != nil {
+			return err
+		}
+		if p == nil {
+			return fmt.Errorf("%w: prodi %q", ErrUnknownRef, in.StudyProgramName)
+		}
+		prog = p
+	}
+	if prog != nil {
+		if s.faculties != nil {
+			f, err := s.faculties.GetByCode(prog.FacultyCode)
+			if err != nil {
+			return err
+			}
+			if f == nil {
+			return fmt.Errorf("%w: fakultas %q", ErrUnknownRef, prog.FacultyCode)
+			}
+			in.FacultyCode, in.FacultyName = f.Code, f.Name
+		}
+		in.StudyProgramCode, in.StudyProgramName = prog.Code, prog.Name
+		return nil
+	}
+	if s.faculties == nil {
+		return nil
+	}
+	if in.FacultyCode != "" {
+		f, err := s.faculties.GetByCode(in.FacultyCode)
+		if err != nil {
+			return err
+		}
+		if f == nil {
+			return fmt.Errorf("%w: fakultas %q", ErrUnknownRef, in.FacultyCode)
+		}
+		in.FacultyName = f.Name
+	} else if in.FacultyName != "" {
+		f, err := s.faculties.GetByName(in.FacultyName)
+		if err != nil {
+			return err
+		}
+		if f == nil {
+			return fmt.Errorf("%w: fakultas %q", ErrUnknownRef, in.FacultyName)
+		}
+		in.FacultyCode, in.FacultyName = f.Code, f.Name
+	}
+	return nil
 }
 
 type CreateMemberInput struct {
@@ -94,6 +169,9 @@ func (s *MemberService) Create(in CreateMemberInput, actor string) (*entity.Libr
 	if existing, _ := s.members.GetByNumber(in.MemberNumber); existing != nil {
 		return nil, ErrMemberExists
 	}
+	if err := s.resolveAffiliation(&in); err != nil {
+		return nil, err
+	}
 	m := &entity.LibraryMember{
 		MemberType: in.MemberType, MemberNumber: in.MemberNumber, DisplayName: in.DisplayName,
 		FacultyCode: in.FacultyCode, FacultyName: in.FacultyName,
@@ -115,6 +193,9 @@ func (s *MemberService) Update(id string, in CreateMemberInput, actor string) (*
 	}
 	if m == nil {
 		return nil, ErrNotFound
+	}
+	if err := s.resolveAffiliation(&in); err != nil {
+		return nil, err
 	}
 	if in.DisplayName != "" {
 		m.DisplayName = strings.TrimSpace(in.DisplayName)
