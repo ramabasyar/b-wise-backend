@@ -128,13 +128,9 @@ func min(a, b int) int {
 // RegisterUser mendaftarkan user via endpoint publik SSO /api/auth/register.
 // (SSO tidak punya endpoint service-user register — publik register + password policy.)
 func (c *SSOClient) RegisterUser(req RegisterUserRequest) (*RegisterUserResponse, error) {
-	lastName := req.LastName
-	if len(lastName) < 3 { // SSO: min 3
-		lastName = lastName + "."
-	}
 	payload := map[string]interface{}{
 		"firstName": req.FirstName,
-		"lastName":  lastName,
+		"lastName":  req.LastName, // audit L3: hack min-3 dihapus — SSO kini opsional
 		"username":  req.Username,
 		"email":     req.Email,
 		"password":  req.Password,

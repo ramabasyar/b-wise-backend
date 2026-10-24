@@ -337,6 +337,24 @@ func (o *OnboardingService) preFlight(req *service.OnboardRequest) error {
 			return fmt.Errorf("%w: join_date harus format YYYY-MM-DD", service.ErrValidation)
 		}
 	}
+	// Audit L6: validasi format NIP & NPWP server-side (sebelumnya NIP >50 kena DB error,
+	// NPWP bebas apa pun).
+	if nip := strings.TrimSpace(req.EmployeeNumber); nip != "" && len(nip) > 50 {
+		return fmt.Errorf("%w: NIP maksimal 50 karakter", service.ErrValidation)
+	}
+	if npwp := strings.TrimSpace(req.NPWP); npwp != "" {
+		digits := 0
+		for _, r := range npwp {
+			if r >= '0' && r <= '9' {
+				digits++
+			} else if r != '.' && r != '-' && r != ' ' {
+				return fmt.Errorf("%w: NPWP hanya boleh angka, titik, atau strip", service.ErrValidation)
+			}
+		}
+		if digits < 15 || digits > 16 {
+			return fmt.Errorf("%w: NPWP harus 15-16 digit", service.ErrValidation)
+		}
+	}
 	if nik := strings.TrimSpace(req.NIK); nik != "" && len(nik) != 16 {
 		return fmt.Errorf("NIK harus 16 digit")
 	}

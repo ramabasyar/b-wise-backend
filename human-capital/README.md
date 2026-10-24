@@ -1,90 +1,49 @@
 # Human Capital Service
 
-> Part of **B-Wise** (Binawan Web Integrated Smart Ecosystem)
+> Part of **B-Wise** (Binawan Web Integrated Smart Ecosystem) — HRM modern pengganti Talenta, benchmark Frappe HR/HRMS (lihat `HC_DESIGN.md` & `ROADMAP.md`).
 
-Service manajemen data karyawan, departemen, dan jabatan.
+## Fitur (per Okt 2026)
+
+- **Onboarding wizard** (`POST /api/onboard`): akun SSO + profil pegawai + NIP otomatis (`BIN-YYYYMM-####`) + movement onboarding + penempatan unit (primary/secondary) + role akses lintas service — sekali jalan, dengan **kompensasi otomatis** (gagal di tengah → user SSO di-rollback) dan **validasi server-side role⊆mapping departemen**.
+- **Employee master** kaya (identitas Indonesia: NIK/NPWP/BPJS, employment, exit) + **movements** ber-tanggal (promotion/transfer/status_change/separation — tanpa overwrite tanpa jejak).
+- **Struktur organisasi dinamis**: departments tree + 5 kamus admin-managed (employee_types/org_unit_types/employment_levels/academic_ranks/structural_positions) + **mapping departemen→service** (`department_services`, UI "Akses Service per Unit").
+- **Auth**: JWKS (RS256) + permission middleware v2 (CheckAccess + RequirePermission, service token via client credentials).
 
 ## Tech Stack
 
-- **Go** 1.25+ with Gin HTTP framework
-- **PostgreSQL** — Database `hc_db`
-- **GORM** — ORM
-- **Redis** — Caching (optional)
-- **JWKS Auth** — Token verification via SSO public key
-
-## Architecture
-
-```
-cmd/server/main.go          # Entry point
-internal/
-  domain/
-    entity/                 # Employee, Department, Position
-    dto/
-      request/              # CreateEmployee, UpdateEmployee, etc.
-      response/             # EmployeeResponse, PaginationMeta, etc.
-      mapper/               # Entity ↔ DTO conversion
-    repository/             # Repository interfaces
-    service/                # Service interfaces
-  adapter/
-    api/http/
-      handler/              # HTTP handlers
-      middleware/            # JWKS auth, permission check, CORS, etc.
-      router/               # Route definitions
-    config/                 # Viper config
-    database/               # PostgreSQL connection
-    persistence/postgres/   # GORM repository implementations
-  service/                  # Service implementations
-configs/config.yaml
-```
+- Go 1.25+ / Gin / GORM / PostgreSQL / Redis (optional, fail-open)
+- Clean Architecture: handler → DTO → service → repository
+- Self-register manifest (`perm.manifest.yaml`) → permission-service saat boot
 
 ## Quick Start
 
 ```bash
-cp .env.example .env
-# Edit .env with DB credentials and SSO details
-go build -o bin/hc ./cmd/server
-./bin/hc
+cp .env.example .env   # isi DB + SERVICE_CLIENT_ID/SECRET dari service_registries SSO
+go build -o bin/server ./cmd/server
+./bin/server
 ```
 
-## API Endpoints
+## API Endpoints (ringkas)
 
-| Method | Path | Permission | Description |
+| Method | Path | Scope | Catatan |
 |--------|------|------------|-------------|
-| GET | `/health` | Public | Health check |
-| GET | `/api/employees` | `employees.read` | List employees |
-| GET | `/api/employees/:id` | `employees.read` | Get employee |
-| POST | `/api/employees` | `employees.write` | Create employee |
-| PUT | `/api/employees/:id` | `employees.write` | Update employee |
-| DELETE | `/api/employees/:id` | `employees.delete` | Delete employee |
-| GET | `/api/departments` | `departments.read` | List departments |
-| POST | `/api/departments` | `departments.write` | Create department |
-| PUT | `/api/departments/:id` | `departments.write` | Update department |
-| DELETE | `/api/departments/:id` | `departments.delete` | Delete department |
-| GET | `/api/positions` | `positions.read` | List positions |
-| POST | `/api/positions` | `positions.write` | Create position |
-| DELETE | `/api/positions/:id` | `positions.delete` | Delete position |
+| GET | `/health` | public | |
+| GET/POST | `/api/employees` | employees.read/write | list (filter+pagination) / manual add (tanpa akun SSO) |
+| GET/PUT/DELETE | `/api/employees/:id` | employees.* | detail (educations + movements timeline); PUT hanya field non-employment |
+| GET | `/api/employees/stats` | employees.read | |
+| PUT | `/api/employees/:id/educations` | employees.write | |
+| GET/POST | `/api/movements` | movements.* | promotion/transfer/status_change/separation (transaksional) |
+| GET/POST | `/api/onboard/check` | onboard.execute | pre-flight duplikat NIP/NIK/email |
+| GET/PUT | `/api/onboard/department-services` | onboard.execute / dictionaries.write | mapping departemen→service (GET wizard, PUT UI Pengaturan Organisasi) |
+| POST | `/api/onboard` | onboard.execute | wizard lengkap (SSO + employee + role) |
+| GET | `/api/dictionaries` | (access) | 5 kamus dinamis |
+| CRUD | `/api/departments`, `/api/designations`, `/api/employment-types`, `/api/grades`, `/api/branches` | *.read/write | master organisasi |
+| GET | `/api/org/resolve-approver` | service token only | resolusi approver utk permission-service |
 
-See [API_DOCS.md](./API_DOCS.md) for full documentation.
+## Dokumentasi
 
-## Configuration
+- `API_DOCS.md` — endpoint lengkap
+- `HC_DESIGN.md` — desain (Frappe HR-aligned)
+- `ROADMAP.md` — fase pengembangan (Fase 2: leave/attendance/ESS; Fase 4: payroll)
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SERVER_PORT` | `8081` | HTTP server port |
-| `DB_HOST` | `localhost` | PostgreSQL host |
-| `DB_NAME` | `hc_db` | Database name |
-| `SSO_URL` | `http://localhost:8080` | SSO service URL |
-| `PERMISSION_SERVICE_URL` | `http://localhost:8082` | Permission Service URL |
-| `SERVICE_NAME` | `human-capital` | Service name for permission check |
-| `SERVICE_CLIENT_ID` | — | OAuth2 client ID from SSO registry |
-| `SERVICE_CLIENT_SECRET` | — | OAuth2 client secret from SSO registry |
-
-## Authentication Flow
-
-1. User logs in via SSO → receives RS256 JWT
-2. Request to `/api/*` with `Authorization: Bearer <token>`
-3. JWKS middleware verifies token via SSO public key
-4. Permission middleware checks access + specific permission via Permission Service
-5. Service tokens (OAuth2) bypass permission checks
-
-*Last updated: 2026-05-20*
+*Last updated: 25 Okt 2026 (audit L5 — versi lama masih era "positions")*

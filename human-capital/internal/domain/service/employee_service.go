@@ -112,14 +112,28 @@ func isDup(err error) bool {
 }
 
 func (s *EmployeeService) Create(emp *entity.Employee) error {
+	autoNumber := strings.TrimSpace(emp.EmployeeNumber) == "" // NIP akan di-generate normalize
 	if err := s.normalize(emp); err != nil {
 		return err
 	}
-	if err := s.repo.Create(emp); err != nil {
-		if isDup(err) {
-			return ErrDuplicate
+	// Audit L7: generateNumber (read-max) racy saat onboarding paralel → duplicate
+	// unique index. NIP auto → regenerate + retry (unique index = safety net);
+	// NIP manual → ErrDuplicate langsung (konflik milik user).
+	for attempt := 0; ; attempt++ {
+		if err := s.repo.Create(emp); err != nil {
+			if isDup(err) && autoNumber && attempt < 3 {
+				if n, gErr := s.generateNumber(); gErr == nil {
+					emp.EmployeeNumber = n
+					log.Printf("[hc] NIP duplikat (race) utk employee baru — regenerate percobaan %d: %s", attempt+2, n)
+					continue
+				}
+			}
+			if isDup(err) {
+				return ErrDuplicate
+			}
+			return err
 		}
-		return err
+		break
 	}
 	// catat movement onboarding (best-effort — kegagalan dilog, bukan swallow)
 	if emp.JoinedDate != nil {

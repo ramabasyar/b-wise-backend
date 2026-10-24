@@ -36,6 +36,7 @@ type OnboardRequest struct {
 	// Data tambahan (opsional) — identitas & kontak darurat
 	NIK                   string `json:"nik"`  // 16 digit KTP, unik
 	NPWP                  string `json:"npwp"` // 15/16 digit
+	PersonalEmail         string `json:"personal_email"` // email pribadi (audit L4 — tidak lagi diduplikasi dari work email)
 	EmergencyContactName  string `json:"emergency_contact_name"`
 	EmergencyContactPhone string `json:"emergency_contact_phone"`
 	CurrentAddress        string `json:"current_address"`
@@ -142,7 +143,8 @@ func parseDate(s string) *time.Time {
 
 // BuildOnboardEmployee — entity dari request wizard (dipakai OnboardingService)
 func (r *OnboardRequest) BuildOnboardEmployee(userID, createdBy string) *entity.Employee {
-	uid, wemail, pemail := userID, r.Email, r.Email
+	uid, wemail := userID, r.Email
+	pemail := strings.TrimSpace(r.PersonalEmail) // audit L4: email pribadi opsional — jangan duplikat work email
 	emp := &entity.Employee{
 		UserID:           &uid,
 		EmployeeNumber:   strings.TrimSpace(r.EmployeeNumber),
