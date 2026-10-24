@@ -47,6 +47,14 @@ permissions:
     description: Lihat unit/fakultas (branch)
   - permission: branches.write
     description: Kelola unit/fakultas
+  - permission: leave.self
+    description: Ajukan & pantau cuti sendiri + setujui cuti bawahan langsung (ESS dasar)
+  - permission: leave_types.read
+    description: Lihat jenis cuti
+  - permission: leave_types.write
+    description: Kelola jenis cuti (default hari, aktif/nonaktif)
+  - permission: leave_requests.read
+    description: Lihat semua pengajuan cuti lintas pegawai (monitoring HC)
 
 # Role default service ini — di-upsert self-sync (union, tidak menghapus role/permission
 # yang dibuat admin manual). Calon staging bootstrap: tanpa ini portal gak ada role utk di-assign.
@@ -74,6 +82,10 @@ roles:
       - grades.write
       - branches.read
       - branches.write
+      - leave.self
+      - leave_types.read
+      - leave_types.write
+      - leave_requests.read
   - name: HR Staff
     description: Operasional harian HC — tulis data & onboard, tanpa hapus
     permissions:
@@ -88,6 +100,9 @@ roles:
       - employment_types.read
       - grades.read
       - branches.read
+      - leave.self
+      - leave_types.read
+      - leave_requests.read
   - name: HC Viewer
     description: Baca-saja seluruh data HC + ajukan akses
     permissions:
@@ -99,6 +114,11 @@ roles:
       - employment_types.read
       - grades.read
       - branches.read
+      - leave.self
+  - name: Pegawai
+    description: ESS dasar — ajukan & pantau cuti sendiri + approval cuti bawahan langsung
+    permissions:
+      - leave.self
 
 menu:
   - label: "Human Capital"
@@ -156,3 +176,18 @@ menu:
         icon: Settings
         required_permission: dictionaries.write
         sort_order: 10
+      - label: Cuti Saya
+        path: /dashboard/human-capital/leave/my
+        icon: CalendarClock
+        required_permission: leave.self
+        sort_order: 11
+      - label: Approval Cuti
+        path: /dashboard/human-capital/leave/approvals
+        icon: ClipboardCheck
+        required_permission: leave.self
+        sort_order: 12
+      - label: Pengaturan Cuti
+        path: /dashboard/human-capital/leave
+        icon: CalendarDays
+        required_permission: leave_requests.read
+        sort_order: 13

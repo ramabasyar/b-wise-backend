@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"time"
+
 	"github.com/rama/b-wise/human-capital/internal/domain/entity"
 )
 
@@ -84,4 +86,34 @@ type MovementFilter struct {
 	Page, PageSize int
 	EmployeeID     string
 	Type           string
+}
+
+// LeaveRepository — cuti (Fase 2): jenis, saldo, pengajuan + approval 1 level.
+type LeaveRepository interface {
+	// jenis cuti (master)
+	CreateType(t *entity.LeaveType) error
+	UpdateType(t *entity.LeaveType) error
+	DeleteType(id string) error
+	GetTypeByID(id string) (*entity.LeaveType, error)
+	ListTypes(activeOnly bool) ([]entity.LeaveType, error)
+	CountRequestsByType(typeID string) (int64, error)
+
+	// saldo per (pegawai, jenis, tahun)
+	GetBalance(employeeID, typeID string, year int) (*entity.LeaveBalance, error)
+	CreateBalance(b *entity.LeaveBalance) error
+	ListBalances(employeeID string, year int) ([]entity.LeaveBalance, error)
+
+	// pengajuan
+	CreateRequest(r *entity.LeaveRequest) error
+	GetRequestByID(id string) (*entity.LeaveRequest, error)
+	ListRequestsByEmployee(employeeID, status string, page, pageSize int) ([]entity.LeaveRequest, int64, error)
+	ListRequestsForApprover(approverID, status string, page, pageSize int) ([]entity.LeaveRequest, int64, error)
+	ListRequestsAll(filter LeaveRequestFilter) ([]entity.LeaveRequest, int64, error)
+	HasOverlap(employeeID string, start, end time.Time) (bool, error)
+}
+
+type LeaveRequestFilter struct {
+	Page, PageSize int
+	Status         string
+	Query          string // nomor pengajuan / nama pegawai
 }

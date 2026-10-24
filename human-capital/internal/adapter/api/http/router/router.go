@@ -21,6 +21,7 @@ type SetupDeps struct {
 	EmployeeHandler      *handler.EmployeeHandler
 	OrgHandler           *handler.OrgHandler
 	DictionaryHandler    *handler.DictionaryHandler
+	LeaveHandler         *handler.LeaveHandler
 	SSOURL               string
 	PermissionServiceURL string
 	ServiceName          string
@@ -130,6 +131,45 @@ func SetupWithLogger(d SetupDeps) *gin.Engine {
 		branches.POST("", permCheck.RequirePermission("branches.write"), d.OrgHandler.CreateBranch)
 		branches.PUT("/:id", permCheck.RequirePermission("branches.write"), d.OrgHandler.UpdateBranch)
 		branches.DELETE("/:id", permCheck.RequirePermission("branches.write"), d.OrgHandler.DeleteBranch)
+	}
+
+	// ============ LEAVE (Fase 2 — cuti + approval 1 LEVEL atasan langsung) ============
+	if d.LeaveHandler != nil {
+		// Jenis cuti: baca = semua pegawai ter-autentikasi (dropdown form ajukan); tulis = admin HC.
+		leaveTypes := api.Group("/leave/types")
+		leaveTypes.Use(jwksAuth.RequireAuth())
+		{
+			leaveTypes.GET("", d.LeaveHandler.ListTypes)
+			leaveTypes.POST("", permCheck.RequirePermission("leave_types.write"), d.LeaveHandler.CreateType)
+			leaveTypes.PUT("/:id", permCheck.RequirePermission("leave_types.write"), d.LeaveHandler.UpdateType)
+			leaveTypes.DELETE("/:id", permCheck.RequirePermission("leave_types.write"), d.LeaveHandler.DeleteType)
+		}
+
+		// Self-service (Cuti Saya): self-scoped by design — identitas dari token;
+		// cukup autentikasi (pegawai tanpa role HC tetap bisa mengajukan cuti).
+		leaveMy := api.Group("/leave/my")
+		leaveMy.Use(jwksAuth.RequireAuth())
+		{
+			leaveMy.GET("/summary", d.LeaveHandler.MySummary)
+			leaveMy.GET("/requests", d.LeaveHandler.MyRequests)
+			leaveMy.POST("/requests", d.LeaveHandler.Submit)
+			leaveMy.POST("/requests/:id/cancel", d.LeaveHandler.Cancel)
+		}
+
+		// Approval inbox atasan: self-scoped (hanya pengajuan di mana dia approver).
+		leaveAppr := api.Group("/leave/approvals")
+		leaveAppr.Use(jwksAuth.RequireAuth())
+		{
+			leaveAppr.GET("", d.LeaveHandler.MyApprovals)
+			leaveAppr.POST("/:id/decision", d.LeaveHandler.Decide)
+		}
+
+		// Monitoring admin HC: semua pengajuan lintas pegawai.
+		leaveAll := api.Group("/leave/requests")
+		leaveAll.Use(jwksAuth.RequireAuth())
+		{
+			leaveAll.GET("", permCheck.RequirePermission("leave_requests.read"), d.LeaveHandler.AllRequests)
+		}
 	}
 
 	r.GET("/health", handler.NewHealthHandler().GetHealth)

@@ -44,6 +44,7 @@ func main() {
 	var empHandler *handler.EmployeeHandler
 	var orgHandler *handler.OrgHandler
 	var dictHandler *handler.DictionaryHandler
+	var leaveHandler *handler.LeaveHandler
 	var db *gorm.DB
 
 	if cfg.Database.Host != "" {
@@ -71,6 +72,9 @@ func main() {
 				&entity.AcademicRank{},
 				&entity.StructuralPosition{},
 				&entity.EmployeeUnitAssignment{},
+				&entity.LeaveType{},
+				&entity.LeaveBalance{},
+				&entity.LeaveRequest{},
 			); err != nil {
 				zapLogger.Warn(fmt.Sprintf("[startup] migration failed: %v", err))
 			} else {
@@ -85,11 +89,13 @@ func main() {
 			gradeRepo := postgres.NewGradeRepository(db)
 			branchRepo := postgres.NewBranchRepository(db)
 			movRepo := postgres.NewMovementRepository(db)
+			leaveRepo := postgres.NewLeaveRepository(db)
 
 			// Services
 			empSvc := domainsvc.NewEmployeeService(empRepo, movRepo)
 			orgSvc := domainsvc.NewOrgService(deptRepo, desigRepo, empTypeRepo, gradeRepo, branchRepo)
 			movSvc := domainsvc.NewMovementService(movRepo, empRepo, db)
+			leaveSvc := domainsvc.NewLeaveService(leaveRepo, empRepo, db)
 
 			// SSO + Permission clients (dipakai onboarding & perm middleware)
 			ssoClient := sso.NewSSOClient(cfg.SSO.URL, cfg.SSO.ServiceClientID, cfg.SSO.ServiceClientSecret)
@@ -102,10 +108,12 @@ func main() {
 			empHandler.SetDB(db) // utk mapping department_services (onboard org-driven)
 			orgHandler = handler.NewOrgHandler(orgSvc)
 			dictHandler = handler.NewDictionaryHandler(db)
+			leaveHandler = handler.NewLeaveHandler(leaveSvc)
 
 			// Seed master reference (idempoten — tanpa data dummy)
 			seedReference(db, zapLogger)
 			seedDictionaries(db, zapLogger)
+			seedLeaveTypes(db, zapLogger)
 
 			zapLogger.Info("[startup] repositories and services initialized")
 		}
@@ -144,6 +152,7 @@ func main() {
 		EmployeeHandler:      empHandler,
 		OrgHandler:           orgHandler,
 		DictionaryHandler:    dictHandler,
+		LeaveHandler:         leaveHandler,
 		SSOURL:               cfg.SSO.URL,
 		PermissionServiceURL: cfg.SSO.PermissionServiceURL,
 		ServiceName:          cfg.SSO.ServiceName,
