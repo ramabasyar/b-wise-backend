@@ -53,7 +53,7 @@ Service Human Capital = **HRM modern pengganti Talenta/Frappe HR** untuk Univers
 | Fase | Modul | Nilai | Estimasi | Status |
 |---|---|---|---|---|
 | 1 | Core HR dasar | Fondasi | M | ✅ DONE |
-| 2 | **Leave + Attendance dasar + ESS** | Dipakai harian semua pegawai | L | ⬜ |
+| 2 | **Leave + Attendance dasar + ESS** | Dipakai harian semua pegawai | L | 🔄 Leave+approval 1-level ✅ (25 Okt); attendance & ESS sisa |
 | 3 | Core HR lanjut (movement, grade, dokumen, jenis kepegawaian) | Melengkapi fondasi pra-payroll | M | ⬜ |
 | 4 | **Payroll + BPJS + PPh 21 + THR** | Killing feature pengganti Talenta | XL | ⬜ |
 | 5 | Performance (link IKU) + L&D | Menyambung ekosistem B-Wise | L | ⬜ |
@@ -68,13 +68,13 @@ Service Human Capital = **HRM modern pengganti Talenta/Frappe HR** untuk Univers
 **Tujuan:** pegawai bisa clock-in/out + ajukan cuti + lihat saldo; atasan approve — nilai harian langsung terasa.
 
 ### 4.1 Leave Management
-- [ ] Entity `leave_types` (tahunan, sakit, melahirkan, menikah, ibadah, cuti bersama, tanpa gaji) + kuota default per jenis kepegawaian
-- [ ] Entity `leave_balances` (per pegawai per tahun, carry-over max N hari — parameter)
-- [ ] Entity `leave_requests` + status workflow: `draft → submitted → approved/rejected → cancelled`
-- [ ] Approval sederhana 1 level (atasan langsung dari relasi position/reporting — butuh field `reports_to` di employee, lihat catatan)
-- [ ] Kalender kerja & hari libur nasional (tabel `holidays`, bisa import)
-- [ ] Endpoint: pengajuan, approval (approve/reject + alasan), saldo, riwayat
-- [ ] UI: halaman "Cuti Saya" (ESS) + halaman "Approval Cuti" (approver) + admin leave-type config
+- [x] Entity `leave_types` + kuota default per jenis — seed 6 (CT 12 / CB 90 / CM 90 / CS 14 / CP 30 / CTP 30), admin kelola via UI "Pengaturan Cuti"
+- [x] Entity `leave_balances` — lazy-init per (pegawai, jenis, tahun) dari DefaultDays. ⚠️ carry-over belum (tahun ganti = saldo baru)
+- [x] Entity `leave_requests` + status workflow: `submitted → approved/rejected | cancelled` (tanpa draft — langsung submit; nomor LR-YYYYMM-####)
+- [x] Approval 1 level — approver = snapshot `employees.reports_to` saat diajukan; approve dalam 1 transaksi SELECT..FOR UPDATE (anti race double-approve/over-deduct) + guard anti double-decide
+- [ ] Kalender kerja & hari libur nasional (tabel `holidays`) — hitungan hari masih calendar days inklusif
+- [x] Endpoint: `/api/leave/my/*` (self-service, cukup autentikasi — tanpa role HC), `/api/leave/approvals/*` (atasan, self-scoped), `/api/leave/types`, `/api/leave/requests` (admin)
+- [x] UI: "Cuti Saya" (ESS) + "Approval Cuti" (approver) + "Pengaturan Cuti" (admin: monitoring semua pengajuan + CRUD jenis)
 
 ### 4.2 Attendance Dasar
 - [ ] Entity `attendance_records` (check-in/out, tanggal, metode)
@@ -89,12 +89,12 @@ Service Human Capital = **HRM modern pengganti Talenta/Frappe HR** untuk Univers
 - [ ] Dasbor admin: siapa yang telat/absen hari ini
 
 ### Kriteria Selesai (DoD Fase 2)
-- [ ] Scope baru ter-seed: `leaves.*`, `attendance.*`, `ess.*` + menu portal
-- [ ] E2E: pegawai ajukan cuti → atasan approve → saldo berkurang
+- [x] Scope leave ter-seed (`leave.*` + menu portal; attendance/ess menyusul)
+- [x] E2E: pegawai ajukan cuti → atasan approve → saldo berkurang — **21/21 PASS di staging** (25 Okt 2026; backend `27f16a5` + portal `43705b0`)
 - [ ] E2E: check-in/out web tercatat + muncul di laporan
 
 ### Catatan Desain
-- `reports_to`: tambahkan kolom `reporting_to` (FK position/employee) saat fase ini — approval butuh relasi atasan. ⚠️ ini perubahan schema employee.
+- `reports_to`: kolom `reports_to` (self-link employee) SUDAH ADA sejak core — dipakai langsung (di-snapshot ke `approver_id` saat submit); tidak perlu perubahan schema baru.
 - Workflow approval: mulai 1-level sederhana (state machine di service layer, tabel request + status). Jangan import workflow engine penuh dulu.
 
 ---
