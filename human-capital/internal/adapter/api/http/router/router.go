@@ -92,7 +92,7 @@ func SetupWithLogger(d SetupDeps) *gin.Engine {
 
 	// ============ ORG INTERNAL (Fase B — approver resolution utk permission-service) ============
 	orgInternal := api.Group("/org")
-	orgInternal.Use(jwksAuth.RequireAuth())
+	orgInternal.Use(jwksAuth.RequireAuth(), middleware.RequireServiceToken())
 	{
 		orgInternal.GET("/resolve-approver", d.EmployeeHandler.ResolveApprover)
 	}

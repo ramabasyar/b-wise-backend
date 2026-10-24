@@ -17,20 +17,20 @@ type SSOClient struct {
 	httpClient *http.Client
 
 	// Service token cache
-	serviceToken     string
-	serviceClientID  string
-	serviceSecret    string
-	tokenMu          sync.Mutex
-	tokenExpiry      time.Time
+	serviceToken    string
+	serviceClientID string
+	serviceSecret   string
+	tokenMu         sync.Mutex
+	tokenExpiry     time.Time
 }
 
 // NewSSOClient creates a new SSO client
 func NewSSOClient(ssoURL, clientID, clientSecret string) *SSOClient {
 	return &SSOClient{
-		ssoURL:           ssoURL,
-		serviceClientID:  clientID,
-		serviceSecret:    clientSecret,
-		httpClient:       &http.Client{Timeout: 10 * time.Second},
+		ssoURL:          ssoURL,
+		serviceClientID: clientID,
+		serviceSecret:   clientSecret,
+		httpClient:      &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
@@ -42,7 +42,7 @@ type RegisterUserRequest struct {
 	FirstName string   `json:"first_name"`
 	LastName  string   `json:"last_name"`
 	BaseRole  string   `json:"base_role"` // realm primer (kompatibilitas)
-	Roles     []string `json:"roles"`    // multi-realm (mis. dosen+staff)
+	Roles     []string `json:"roles"`     // multi-realm (mis. dosen+staff)
 }
 
 // RegisterUserResponse represents the response from SSO
@@ -165,17 +165,17 @@ func (c *SSOClient) RegisterUser(req RegisterUserRequest) (*RegisterUserResponse
 
 	respBody, _ := io.ReadAll(resp.Body)
 	var raw struct {
-		Success bool `json:"success"`
+		Success bool   `json:"success"`
 		Message string `json:"message"`
 		Data    struct {
 			User struct {
 				ID        json.Number `json:"id"`
-				Username  string `json:"username"`
-				Email     string `json:"email"`
-				FirstName string `json:"first_name"`
-				LastName  string `json:"last_name"`
-				Role      string `json:"role"`
-				Roles     []string `json:"roles"`
+				Username  string      `json:"username"`
+				Email     string      `json:"email"`
+				FirstName string      `json:"first_name"`
+				LastName  string      `json:"last_name"`
+				Role      string      `json:"role"`
+				Roles     []string    `json:"roles"`
 			} `json:"user"`
 		} `json:"data"`
 		Error string `json:"error"` // bentuk: "REGISTER_ERROR" (kode)
@@ -198,7 +198,29 @@ func (c *SSOClient) RegisterUser(req RegisterUserRequest) (*RegisterUserResponse
 	out.Data.FirstName = raw.Data.User.FirstName
 	out.Data.LastName = raw.Data.User.LastName
 	out.Data.BaseRole = raw.Data.User.Role // utk verifikasi realm primer
-	out.Data.Roles = raw.Data.User.Roles  // utk verifikasi semua realm
+	out.Data.Roles = raw.Data.User.Roles   // utk verifikasi semua realm
 	out.Data.Status = "active"
 	return out, nil
+}
+
+// DeleteUser — DELETE /api/service-users/:id (service token, khusus human-capital).
+// Kompensasi user yatim saat onboard gagal (audit H3) — hard delete di sisi SSO
+// supaya username/email bebas dipakai ulang.
+func (c *SSOClient) DeleteUser(userID string) error {
+	token, err := c.GetServiceToken()
+	if err != nil {
+		return err
+	}
+	req, _ := http.NewRequest("DELETE", c.ssoURL+"/api/service-users/"+userID, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("SSO delete request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("SSO delete user gagal (HTTP %d): %s", resp.StatusCode, string(body[:min(len(body), 150)]))
+	}
+	return nil
 }

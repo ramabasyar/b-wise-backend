@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rama/b-wise/permission-service/internal/domain/entity"
+	"github.com/rama/b-wise/permission-service/internal/service/ssotoken"
 	"gorm.io/gorm"
 )
 
@@ -20,7 +21,8 @@ type AccessRequestHandler struct {
 	svc        PermissionServiceIface // subset: AssignRoleToUser + audit
 	hcURL      string
 	httpC      *http.Client
-	superAdmin map[string]bool // SUPER_ADMIN_IDS — boleh memutuskan pengajuan tanpa approver
+	superAdmin map[string]bool  // SUPER_ADMIN_IDS — boleh memutuskan pengajuan tanpa approver
+	ssoTokens  *ssotoken.Client // service token utk panggil HC org API (audit M5)
 }
 
 // PermissionServiceIface — subset PermissionService yang dibutuhkan (hindari import cycle penuh).
@@ -28,14 +30,18 @@ type PermissionServiceIface interface {
 	AssignRoleToUser(userID, roleID, grantedBy string) error
 }
 
-func NewAccessRequestHandler(db *gorm.DB, svc PermissionServiceIface, hcURL string, superAdminIDs []string) *AccessRequestHandler {
+func NewAccessRequestHandler(db *gorm.DB, svc PermissionServiceIface, hcURL string, superAdminIDs []string, ssoURL, ssoClientID, ssoClientSecret string) *AccessRequestHandler {
 	m := map[string]bool{}
 	for _, id := range superAdminIDs {
 		if id = strings.TrimSpace(id); id != "" {
 			m[id] = true
 		}
 	}
-	return &AccessRequestHandler{db: db, svc: svc, hcURL: hcURL, httpC: &http.Client{Timeout: 10 * time.Second}, superAdmin: m}
+	var tokens *ssotoken.Client
+	if ssoClientID != "" && ssoClientSecret != "" {
+		tokens = ssotoken.New(ssoURL, ssoClientID, ssoClientSecret)
+	}
+	return &AccessRequestHandler{db: db, svc: svc, hcURL: hcURL, httpC: &http.Client{Timeout: 10 * time.Second}, superAdmin: m, ssoTokens: tokens}
 }
 
 type createAccessRequestReq struct {
@@ -44,11 +50,19 @@ type createAccessRequestReq struct {
 	Justification string `json:"justification" binding:"required,min=5"`
 }
 
-// resolveApprover — panggil HC org API dgn mem-forward JWT caller.
-func (h *AccessRequestHandler) resolveApprover(authHeader, userID, roleServiceID string) (string, error) {
+// resolveApprover — panggil HC org API memakai SERVICE TOKEN permission-service
+// (audit M5: sebelumnya mem-forward JWT caller → endpoint HC kini service-only).
+func (h *AccessRequestHandler) resolveApprover(userID, roleServiceID string) (string, error) {
+	if h.ssoTokens == nil {
+		return "", fmt.Errorf("service client SSO belum dikonfigurasi (SERVICE_CLIENT_ID/SECRET)")
+	}
+	token, err := h.ssoTokens.Token()
+	if err != nil {
+		return "", fmt.Errorf("service token SSO: %w", err)
+	}
 	url := fmt.Sprintf("%s/api/org/resolve-approver?user_id=%s&service_id=%s", h.hcURL, userID, roleServiceID)
 	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("Authorization", authHeader)
+	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := h.httpC.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("HC org API: %w", err)
@@ -101,7 +115,7 @@ func (h *AccessRequestHandler) Create(c *gin.Context) {
 		return
 	}
 
-	approver, rErr := h.resolveApprover(c.GetHeader("Authorization"), target, role.ServiceID)
+	approver, rErr := h.resolveApprover(target, role.ServiceID)
 	if rErr != nil {
 		// jangan gagalkan pengajuan karena resolusi error — catat pending tanpa approver
 		approver = ""

@@ -106,18 +106,26 @@ func (o *OnboardingService) OnboardEmployee(req service.OnboardRequest, createdB
 	emp := req.BuildOnboardEmployee(userID, createdBy)
 	if err := o.empSvc.Create(emp); err != nil {
 		// User SSO sudah terbuat tapi profil HC gagal → user yatim.
-		// Tidak ada endpoint cleanup berauth service-token di SSO (admin-only),
-		// jadi beri petunjuk eksplisit utk admin.
-		log.Printf("[hc-onboard] ORPHAN: user SSO %s (username=%s, id=%s) terbuat tanpa employee: %v",
-			req.Email, ssoResp.Data.Username, userID, err)
-		return nil, fmt.Errorf(
-			"step 2 gagal (profil pegawai): %v — user SSO sementara sudah terbuat (username: %s, id: %s). "+
-				"Hapus user tersebut via admin portal SSO lalu ulangi onboard",
-			err, ssoResp.Data.Username, userID)
+		// KOMPENSASI (audit H3): hard-delete user SSO otomatis berauth service token,
+		// supaya onboard bisa diulang bersih tanpa intervensi admin.
+		if dErr := o.sso.DeleteUser(userID); dErr == nil {
+			log.Printf("[hc-onboard] KOMPENSASI OK: user SSO %s (id %s) dihapus otomatis setelah step 2 gagal: %v",
+				ssoResp.Data.Username, userID, err)
+			return nil, fmt.Errorf(
+				"step 2 gagal (profil pegawai): %v — user SSO sementara sudah di-rollback otomatis, perbaiki isian lalu ulangi onboard",
+				err)
+		} else {
+			log.Printf("[hc-onboard] ORPHAN: user SSO %s (username=%s, id=%s) terbuat tanpa employee: %v (kompensasi gagal: %v)",
+				req.Email, ssoResp.Data.Username, userID, err, dErr)
+			return nil, fmt.Errorf(
+				"step 2 gagal (profil pegawai): %v — user SSO sementara sudah terbuat (username: %s, id: %s) dan gagal di-rollback otomatis; hapus manual via admin SSO lalu ulangi onboard",
+				err, ssoResp.Data.Username, userID)
+		}
 	}
 
-	// Step 2b: unit assignments (primary + secondary utk dual affiliation)
-	o.writeUnitAssignments(emp, &req, createdBy)
+	// Step 2b: unit assignments (primary + secondary utk dual affiliation) — error
+	// tidak lagi ditelan diam-diam (audit M2): gagal → warning eksplisit.
+	warnings = append(warnings, o.writeUnitAssignments(emp, &req, createdBy)...)
 
 	// Verifikasi realm roles (audit H4): mismatch = kondisi inkonsisten yang tidak boleh
 	// lolos diam-diam — rollback data HC lokal + instruksi hapus user SSO, JANGAN lanjut.
@@ -145,9 +153,13 @@ func (o *OnboardingService) OnboardEmployee(req service.OnboardRequest, createdB
 	}
 	if len(missingRealms) > 0 {
 		o.rollbackEmployee(emp.ID) // best-effort: hapus employee+movement+assignment lokal
+		if dErr := o.sso.DeleteUser(userID); dErr == nil {
+			return nil, fmt.Errorf(
+				"verifikasi realm SSO gagal: realm %v tidak ter-assign (diperoleh: %v) — data pegawai lokal & user SSO sudah di-rollback otomatis, ulangi onboard",
+				missingRealms, ssoResp.Data.Roles)
+		}
 		return nil, fmt.Errorf(
-			"verifikasi realm SSO gagal: realm %v tidak ter-assign (diperoleh: %v) — data pegawai lokal sudah di-rollback; "+
-				"hapus user SSO %q (id %s) via admin SSO lalu ulangi onboard",
+			"verifikasi realm SSO gagal: realm %v tidak ter-assign (diperoleh: %v) — data pegawai lokal sudah di-rollback; hapus user SSO %q (id %s) via admin SSO lalu ulangi onboard",
 			missingRealms, ssoResp.Data.Roles, ssoResp.Data.Username, userID)
 	}
 
@@ -284,26 +296,47 @@ func (o *OnboardingService) validateAgainstDict(req *service.OnboardRequest) err
 	return nil
 }
 
-// writeUnitAssignments — primary + secondary (dual affiliation) + izinkan role ⊆ mapping nanti.
-func (o *OnboardingService) writeUnitAssignments(emp *entity.Employee, req *service.OnboardRequest, createdBy string) {
+// writeUnitAssignments — primary + secondary (dual affiliation). Error create
+// dicatat + dikembalikan sebagai warning (audit M2 — sebelumnya ditelan diam-diam).
+func (o *OnboardingService) writeUnitAssignments(emp *entity.Employee, req *service.OnboardRequest, createdBy string) []string {
+	warnings := []string{}
 	if o.db == nil || emp.DepartmentID == nil || *emp.DepartmentID == "" {
-		return
+		return warnings
 	}
 	now := time.Now()
 	primary := &entity.EmployeeUnitAssignment{
 		EmployeeID: emp.ID, UnitID: *emp.DepartmentID, IsPrimary: true,
 		ValidFrom: &now, CreatedBy: createdBy,
 	}
-	o.db.Create(primary)
+	if err := o.db.Create(primary).Error; err != nil {
+		log.Printf("[hc-onboard] WARNING unit assignment (primary) utk employee %s: %v", emp.ID, err)
+		warnings = append(warnings, "Penempatan unit UTAMA gagal tersimpan — perbaiki manual di data pegawai")
+	}
 	if req.SecondaryUnitID != "" && req.SecondaryUnitID != *emp.DepartmentID {
-		o.db.Create(&entity.EmployeeUnitAssignment{
+		secondary := &entity.EmployeeUnitAssignment{
 			EmployeeID: emp.ID, UnitID: req.SecondaryUnitID, IsPrimary: false,
 			ValidFrom: &now, CreatedBy: createdBy,
-		})
+		}
+		if err := o.db.Create(secondary).Error; err != nil {
+			log.Printf("[hc-onboard] WARNING unit assignment (secondary) utk employee %s: %v", emp.ID, err)
+			warnings = append(warnings, "Penempatan unit KEDUA gagal tersimpan — perbaiki manual di data pegawai")
+		}
 	}
+	return warnings
 }
 
 func (o *OnboardingService) preFlight(req *service.OnboardRequest) error {
+	// Validasi format tanggal (audit M3 — sebelumnya tanggal invalid hilang diam-diam).
+	if req.BirthDate != nil && *req.BirthDate != "" {
+		if _, err := time.Parse("2006-01-02", *req.BirthDate); err != nil {
+			return fmt.Errorf("%w: birth_date harus format YYYY-MM-DD", service.ErrValidation)
+		}
+	}
+	if req.JoinDate != nil && *req.JoinDate != "" {
+		if _, err := time.Parse("2006-01-02", *req.JoinDate); err != nil {
+			return fmt.Errorf("%w: join_date harus format YYYY-MM-DD", service.ErrValidation)
+		}
+	}
 	if nik := strings.TrimSpace(req.NIK); nik != "" && len(nik) != 16 {
 		return fmt.Errorf("NIK harus 16 digit")
 	}
