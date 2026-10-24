@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -15,10 +16,11 @@ import (
 // AccessRequestHandler — Fase B: pengajuan & approval akses.
 // Approver di-resolve via HC Org API (forward JWT user — token RS256 sama valid di HC).
 type AccessRequestHandler struct {
-	db    *gorm.DB
-	svc   PermissionServiceIface // subset: AssignRoleToUser + audit
-	hcURL string
-	httpC *http.Client
+	db         *gorm.DB
+	svc        PermissionServiceIface // subset: AssignRoleToUser + audit
+	hcURL      string
+	httpC      *http.Client
+	superAdmin map[string]bool // SUPER_ADMIN_IDS — boleh memutuskan pengajuan tanpa approver
 }
 
 // PermissionServiceIface — subset PermissionService yang dibutuhkan (hindari import cycle penuh).
@@ -26,8 +28,14 @@ type PermissionServiceIface interface {
 	AssignRoleToUser(userID, roleID, grantedBy string) error
 }
 
-func NewAccessRequestHandler(db *gorm.DB, svc PermissionServiceIface, hcURL string) *AccessRequestHandler {
-	return &AccessRequestHandler{db: db, svc: svc, hcURL: hcURL, httpC: &http.Client{Timeout: 10 * time.Second}}
+func NewAccessRequestHandler(db *gorm.DB, svc PermissionServiceIface, hcURL string, superAdminIDs []string) *AccessRequestHandler {
+	m := map[string]bool{}
+	for _, id := range superAdminIDs {
+		if id = strings.TrimSpace(id); id != "" {
+			m[id] = true
+		}
+	}
+	return &AccessRequestHandler{db: db, svc: svc, hcURL: hcURL, httpC: &http.Client{Timeout: 10 * time.Second}, superAdmin: m}
 }
 
 type createAccessRequestReq struct {
@@ -52,7 +60,7 @@ func (h *AccessRequestHandler) resolveApprover(authHeader, userID, roleServiceID
 	}
 	var out struct {
 		Success bool `json:"success"`
-		Data struct {
+		Data    struct {
 			ApproverUserID *string `json:"approver_user_id"`
 			Reason         string  `json:"reason"`
 		} `json:"data"`
@@ -181,12 +189,19 @@ func (h *AccessRequestHandler) Decide(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"success": false, "error": gin.H{"message": "pengajuan sudah diputuskan"}})
 		return
 	}
-	// otorisasi: approver resolved, ATAU tanpa approver & caller adalah pengaju HC admin
-	// (decide-any enforcement via permission middleware di route — lihat router)
+	// Otorisasi: approver ter-resolve → HANYA approver. Tanpa approver → HANYA superadmin
+	// (sebelumnya siapa pun bisa memutuskan pengajuan tanpa approver — celah eskalasi,
+	// audit HC+SSO 24 Okt 2026 temuan C1).
 	isApprover := ar.ApproverID != nil && *ar.ApproverID == me
-	if !isApprover && ar.ApproverID != nil {
-		c.JSON(http.StatusForbidden, gin.H{"success": false, "error": gin.H{"message": "bukan approver pengajuan ini"}})
-		return
+	if !isApprover {
+		if ar.ApproverID != nil {
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "error": gin.H{"message": "bukan approver pengajuan ini"}})
+			return
+		}
+		if !h.superAdmin[me] {
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "error": gin.H{"message": "pengajuan tanpa approver hanya dapat diputuskan superadmin"}})
+			return
+		}
 	}
 
 	now := time.Now()

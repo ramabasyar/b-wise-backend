@@ -16,7 +16,7 @@ func Setup() *gin.Engine {
 	return r
 }
 
-func SetupWithLogger(logger *zap.Logger, permHandler *handler.PermissionHandler, ssoURL, jwtSecret string, corsOrigins []string, arHandler *handler.AccessRequestHandler) *gin.Engine {
+func SetupWithLogger(logger *zap.Logger, permHandler *handler.PermissionHandler, ssoURL, jwtSecret string, corsOrigins []string, arHandler *handler.AccessRequestHandler, superAdminIDs []string) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	if len(corsOrigins) == 0 {
@@ -30,6 +30,12 @@ func SetupWithLogger(logger *zap.Logger, permHandler *handler.PermissionHandler,
 	jwksAuth := middleware.NewJWKSAuth(ssoURL).WithHMACSecret(jwtSecret)
 	r.Use(jwksAuth.Middleware())
 
+	// AdminGuard — endpoint tulis/manajemen HANYA untuk service token (machine-to-machine)
+	// atau superadmin (SUPER_ADMIN_IDS). Menutup eskalasi privilege register-publik →
+	// roles/assign (audit HC+SSO 24 Okt 2026, temuan C1). Endpoint baca dan access-requests
+	// (alur approval by position) tetap terbuka untuk user terautentikasi.
+	guard := middleware.NewAdminGuard(superAdminIDs).RequireServiceOrSuperAdmin()
+
 	// Public endpoints
 	r.GET("/health", handler.NewHealthHandler().GetHealth)
 
@@ -40,31 +46,31 @@ func SetupWithLogger(logger *zap.Logger, permHandler *handler.PermissionHandler,
 		services := v1.Group("/services")
 		services.Use(jwksAuth.RequireAuth())
 		{
-			services.POST("", permHandler.CreateService)
+			services.POST("", guard, permHandler.CreateService)
 			services.GET("", permHandler.ListServices)
 			services.GET("/:id", permHandler.GetService)
-			services.PUT("/:id", permHandler.UpdateService)
-			services.DELETE("/:id", permHandler.DeleteService)
-			// Self-sync: service mendaftarkan/mutakhirkan manifest-nya sendiri (service token only)
+			services.PUT("/:id", guard, permHandler.UpdateService)
+			services.DELETE("/:id", guard, permHandler.DeleteService)
+			// Self-sync: service mendaftarkan/mutakhirkan manifest-nya sendiri (service token only — dicek di handler)
 			services.POST("/self/sync", permHandler.SelfSync)
-			services.POST("/:id/activate", permHandler.ActivateService)
-			services.POST("/:id/deactivate", permHandler.DeactivateService)
-			services.POST("/:id/permissions", permHandler.CreatePermission)
+			services.POST("/:id/activate", guard, permHandler.ActivateService)
+			services.POST("/:id/deactivate", guard, permHandler.DeactivateService)
+			services.POST("/:id/permissions", guard, permHandler.CreatePermission)
 			services.GET("/:id/permissions", permHandler.ListPermissions)
-			services.POST("/:id/permissions/seed", permHandler.SeedPermissions)
-			services.POST("/:id/access", permHandler.GrantAccess)
+			services.POST("/:id/permissions/seed", guard, permHandler.SeedPermissions)
+			services.POST("/:id/access", guard, permHandler.GrantAccess)
 		}
 
 		permissions := v1.Group("/permissions")
 		permissions.Use(jwksAuth.RequireAuth())
 		{
-			permissions.DELETE("/:id", permHandler.DeletePermission)
+			permissions.DELETE("/:id", guard, permHandler.DeletePermission)
 		}
 
 		access := v1.Group("/access")
 		access.Use(jwksAuth.RequireAuth())
 		{
-			access.DELETE("/:id", permHandler.RevokeAccess)
+			access.DELETE("/:id", guard, permHandler.RevokeAccess)
 		}
 
 		users := v1.Group("/users")
@@ -72,7 +78,7 @@ func SetupWithLogger(logger *zap.Logger, permHandler *handler.PermissionHandler,
 		{
 			users.GET("/:user_id/services", permHandler.GetUserServices)
 			users.GET("/:user_id/services/:service_id/check", permHandler.CheckAccess)
-			users.POST("/:user_id/permissions", permHandler.GrantUserPermission)
+			users.POST("/:user_id/permissions", guard, permHandler.GrantUserPermission)
 			users.GET("/:user_id/permissions", permHandler.GetUserPermissions)
 			users.GET("/:user_id/permissions/service/:service_id", permHandler.GetUserPermissionsByService)
 			users.GET("/:user_id/permissions/check", permHandler.HasPermission)
@@ -83,46 +89,46 @@ func SetupWithLogger(logger *zap.Logger, permHandler *handler.PermissionHandler,
 		userPerms := v1.Group("/user-permissions")
 		userPerms.Use(jwksAuth.RequireAuth())
 		{
-			userPerms.DELETE("/:id", permHandler.RevokeUserPermission)
+			userPerms.DELETE("/:id", guard, permHandler.RevokeUserPermission)
 		}
 
 		// Role management
 		roles := v1.Group("/roles")
 		roles.Use(jwksAuth.RequireAuth())
 		{
-			roles.POST("", permHandler.CreateRole)
+			roles.POST("", guard, permHandler.CreateRole)
 			roles.GET("", permHandler.ListRoles)
 			roles.GET("/:id", permHandler.GetRole)
-			roles.PUT("/:id", permHandler.UpdateRole)
-			roles.DELETE("/:id", permHandler.DeleteRole)
-			roles.POST("/assign", permHandler.AssignRole)
-			roles.DELETE("/users/:user_id/roles/:role_id", permHandler.RevokeRole)
+			roles.PUT("/:id", guard, permHandler.UpdateRole)
+			roles.DELETE("/:id", guard, permHandler.DeleteRole)
+			roles.POST("/assign", guard, permHandler.AssignRole)
+			roles.DELETE("/users/:user_id/roles/:role_id", guard, permHandler.RevokeRole)
 
 			// Access requests (Fase B — approval by position)
-		ars := v1.Group("/access-requests")
-		ars.Use(jwksAuth.RequireAuth())
-		{
-			ars.POST("", arHandler.Create)
-			ars.GET("/mine", arHandler.Mine)
-			ars.GET("/pending", arHandler.Pending)
-			ars.POST("/:id/decide", arHandler.Decide)
-		}
+			ars := v1.Group("/access-requests")
+			ars.Use(jwksAuth.RequireAuth())
+			{
+				ars.POST("", arHandler.Create)
+				ars.GET("/mine", arHandler.Mine)
+				ars.GET("/pending", arHandler.Pending)
+				ars.POST("/:id/decide", arHandler.Decide)
+			}
 
-		// Audit trail
-		audit := v1.Group("/audit-logs")
-		audit.Use(jwksAuth.RequireAuth())
-		{
-			audit.GET("", permHandler.ListAuditLogs)
-		}
+			// Audit trail
+			audit := v1.Group("/audit-logs")
+			audit.Use(jwksAuth.RequireAuth())
+			{
+				audit.GET("", guard, permHandler.ListAuditLogs)
+			}
 
-		// Menu items (per-service navigation)
+			// Menu items (per-service navigation)
 			menu := v1.Group("/menu-items")
 			menu.Use(jwksAuth.RequireAuth())
 			{
-				menu.POST("", permHandler.CreateMenuItem)
+				menu.POST("", guard, permHandler.CreateMenuItem)
 				menu.GET("", permHandler.ListMenuItems)
-				menu.PUT("/:id", permHandler.UpdateMenuItem)
-				menu.DELETE("/:id", permHandler.DeleteMenuItem)
+				menu.PUT("/:id", guard, permHandler.UpdateMenuItem)
+				menu.DELETE("/:id", guard, permHandler.DeleteMenuItem)
 			}
 			roles.GET("/users/:user_id", permHandler.GetUserRoles)
 		}

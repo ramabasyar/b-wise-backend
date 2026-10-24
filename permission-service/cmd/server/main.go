@@ -122,7 +122,7 @@ func main() {
 
 			// Initialize handler
 			permHandler = handler.NewPermissionHandler(permSvc)
-			arHandlerLocal = handler.NewAccessRequestHandler(db, permSvc, cfg.SSO.HumanCapitalURL)
+			arHandlerLocal = handler.NewAccessRequestHandler(db, permSvc, cfg.SSO.HumanCapitalURL, cfg.SSO.SuperAdminIDs)
 
 			zapLogger.Info("[startup] repositories and services initialized")
 		}
@@ -138,9 +138,9 @@ func main() {
 		cfg.SSO.HumanCapitalURL = "http://127.0.0.1:8081"
 	}
 	if arHandlerLocal == nil {
-		arHandlerLocal = handler.NewAccessRequestHandler(db, nil, cfg.SSO.HumanCapitalURL)
+		arHandlerLocal = handler.NewAccessRequestHandler(db, nil, cfg.SSO.HumanCapitalURL, cfg.SSO.SuperAdminIDs)
 	}
-	r := router.SetupWithLogger(zapGlobal, permHandler, cfg.SSO.URL, cfg.JWT.Secret, cfg.CORS.AllowedOrigins, arHandlerLocal)
+	r := router.SetupWithLogger(zapGlobal, permHandler, cfg.SSO.URL, cfg.JWT.Secret, cfg.CORS.AllowedOrigins, arHandlerLocal, cfg.SSO.SuperAdminIDs)
 
 	// Start server
 	serverAddr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
