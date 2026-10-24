@@ -34,8 +34,8 @@ type OnboardRequest struct {
 	JoinDate         *string `json:"join_date"`
 
 	// Data tambahan (opsional) — identitas & kontak darurat
-	NIK                   string `json:"nik"`      // 16 digit KTP, unik
-	NPWP                  string `json:"npwp"`     // 15/16 digit
+	NIK                   string `json:"nik"`  // 16 digit KTP, unik
+	NPWP                  string `json:"npwp"` // 15/16 digit
 	EmergencyContactName  string `json:"emergency_contact_name"`
 	EmergencyContactPhone string `json:"emergency_contact_phone"`
 	CurrentAddress        string `json:"current_address"`
@@ -108,16 +108,25 @@ func (r *OnboardRequest) AllRoleIDs() []string {
 }
 
 type OnboardResult struct {
-	UserID         string   `json:"user_id"`
-	EmployeeRowID  string   `json:"employee_id"`
-	EmployeeNumber string   `json:"employee_number"`
-	Username       string   `json:"username"`
-	Email          string   `json:"email"`
-	BaseRole       string   `json:"base_role"`  // realm primer SSO (verifikasi)
-	RealmRoles     []string `json:"realm_roles"` // semua realm yang ter-assign
-	EmployeeType   string   `json:"employee_type"`
-	Status         string   `json:"status"`
-	Warnings       []string `json:"warnings,omitempty"` // best-effort steps yang perlu perhatian admin
+	UserID         string       `json:"user_id"`
+	EmployeeRowID  string       `json:"employee_id"`
+	EmployeeNumber string       `json:"employee_number"`
+	Username       string       `json:"username"`
+	Email          string       `json:"email"`
+	BaseRole       string       `json:"base_role"`   // realm primer SSO (verifikasi)
+	RealmRoles     []string     `json:"realm_roles"` // semua realm yang ter-assign
+	EmployeeType   string       `json:"employee_type"`
+	Status         string       `json:"status"`
+	Warnings       []string     `json:"warnings,omitempty"`     // best-effort steps yang perlu perhatian admin
+	RoleResults    []RoleResult `json:"role_results,omitempty"` // status assign per-role (audit H4)
+}
+
+// RoleResult — status pemasangan role akses per-role (audit H4: transparansi provisioning).
+type RoleResult struct {
+	RoleID   string `json:"role_id"`
+	RoleName string `json:"role_name"`
+	Status   string `json:"status"` // assigned | failed
+	Error    string `json:"error,omitempty"`
 }
 
 func parseDate(s string) *time.Time {

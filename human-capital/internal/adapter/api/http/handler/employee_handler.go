@@ -8,21 +8,21 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 	"github.com/rama/b-wise/human-capital/internal/adapter/api/http/middleware"
 	"github.com/rama/b-wise/human-capital/internal/domain/entity"
 	repository "github.com/rama/b-wise/human-capital/internal/domain/repository"
 	service "github.com/rama/b-wise/human-capital/internal/domain/service"
 	"github.com/rama/b-wise/human-capital/internal/service/onboarding"
 	"github.com/rama/b-wise/human-capital/pkg/response"
+	"gorm.io/gorm"
 )
 
 // EmployeeHandler — employees + movements + onboarding
 type EmployeeHandler struct {
-	svc   *service.EmployeeService
-	movSvc *service.MovementService
+	svc     *service.EmployeeService
+	movSvc  *service.MovementService
 	onboard *onboarding.OnboardingService
-	db *gorm.DB
+	db      *gorm.DB
 }
 
 func NewEmployeeHandler(svc *service.EmployeeService, movSvc *service.MovementService) *EmployeeHandler {
@@ -272,6 +272,28 @@ func (h *EmployeeHandler) OnboardDeptServices(c *gin.Context) {
 	response.Success(c, out)
 }
 
+// SetDeptServices PUT /api/onboard/department-services — set mapping departemen→service
+// (UI Pengaturan Organisasi → Akses Service per Unit; sumber pilihan role wizard Langkah 3).
+func (h *EmployeeHandler) SetDeptServices(c *gin.Context) {
+	if h.onboard == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"success": false, "error": gin.H{"message": "onboarding belum terkonfigurasi"}})
+		return
+	}
+	var body struct {
+		DepartmentID string   `json:"department_id" binding:"required"`
+		ServiceIDs   []string `json:"service_ids"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+		return
+	}
+	if err := h.onboard.SetDepartmentServices(body.DepartmentID, body.ServiceIDs, actor(c)); err != nil {
+		errStatus(c, err)
+		return
+	}
+	response.Success(c, gin.H{"message": "mapping akses service tersimpan"})
+}
+
 // Onboard POST /api/onboard
 func (h *EmployeeHandler) Onboard(c *gin.Context) {
 	if h.onboard == nil {
@@ -352,7 +374,7 @@ func (h *EmployeeHandler) ResolveApprover(c *gin.Context) {
 
 	// kepala unit target
 	var heads []struct {
-		EmployeeID string
+		EmployeeID         string
 		StructuralPosition string
 	}
 	h.db.Table("employee_unit_assignments").

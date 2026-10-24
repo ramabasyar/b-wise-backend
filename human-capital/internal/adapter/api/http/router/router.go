@@ -75,8 +75,9 @@ func SetupWithLogger(d SetupDeps) *gin.Engine {
 		onboard.Use(jwksAuth.RequireAuth(), permCheck.CheckAccess())
 		{
 			onboard.POST("", permCheck.RequirePermission("onboard.execute"), d.EmployeeHandler.Onboard)
-		onboard.GET("/check", permCheck.RequirePermission("onboard.execute"), d.EmployeeHandler.OnboardCheck)
-		onboard.GET("/department-services", permCheck.RequirePermission("onboard.execute"), d.EmployeeHandler.OnboardDeptServices)
+			onboard.GET("/check", permCheck.RequirePermission("onboard.execute"), d.EmployeeHandler.OnboardCheck)
+			onboard.GET("/department-services", permCheck.RequirePermission("onboard.execute"), d.EmployeeHandler.OnboardDeptServices)
+			onboard.PUT("/department-services", permCheck.RequirePermission("dictionaries.write"), d.EmployeeHandler.SetDeptServices)
 		}
 	}
 

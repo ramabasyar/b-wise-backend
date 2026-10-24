@@ -9,20 +9,22 @@ import (
 	"github.com/rama/b-wise/human-capital/internal/domain/entity"
 	"github.com/rama/b-wise/human-capital/internal/domain/service"
 	"github.com/rama/b-wise/human-capital/internal/service/permission"
-	"gorm.io/gorm"
 	"github.com/rama/b-wise/human-capital/internal/service/sso"
+	"gorm.io/gorm"
 )
 
 // OnboardingService — wizard 3 langkah:
-// 0. Pre-flight: NIP/NIK duplikat dicek SEBELUM registrasi SSO (cegah user yatim)
+// 0. Pre-flight: NIP/NIK/email duplikat dicek SEBELUM registrasi SSO (cegah user yatim)
+//   - validasi kamus + validasi server-side role ⊆ mapping departemen (audit M4).
+//
 // 1. Register user di SSO (role realm via service token)
 // 2. Create employee (HC) + movement onboarding otomatis (via EmployeeService.Create)
-// 3. Assign role di Permission Service (best-effort → warning, bukan error)
+// 3. Assign role di Permission Service (retry 1x + status per-role — audit H4)
 type OnboardingService struct {
 	empSvc *service.EmployeeService
 	sso    *sso.SSOClient
 	perm   *permission.PermissionClient
-	db     *gorm.DB // kamus employee_types + tulis employee_unit_assignments
+	db     *gorm.DB // kamus employee_types + employee_unit_assignments + mapping department_services
 }
 
 func NewOnboardingService(
@@ -36,6 +38,7 @@ func NewOnboardingService(
 
 func (o *OnboardingService) OnboardEmployee(req service.OnboardRequest, createdBy string) (*service.OnboardResult, error) {
 	warnings := []string{}
+	roleResults := []service.RoleResult{}
 
 	// Step 0: pre-flight HC — cegah user SSO yatim akibat NIP/NIK/email duplikat
 	if err := o.preFlight(&req); err != nil {
@@ -43,6 +46,36 @@ func (o *OnboardingService) OnboardEmployee(req service.OnboardRequest, createdB
 	}
 	if err := o.validateAgainstDict(&req); err != nil {
 		return nil, err
+	}
+
+	// Step 0b (audit M4): validasi server-side role ⊆ mapping departemen.
+	// Role milik service yang tidak ter-mapping utk unit pegawai → TOLAK sebelum side effect apa pun.
+	roleInfo := map[string]permission.RoleInfo{} // roleID → info (nama dipakai lagi di Step 3)
+	if ids := req.AllRoleIDs(); len(ids) > 0 {
+		if req.DepartmentID == nil || *req.DepartmentID == "" {
+			return nil, fmt.Errorf("%w: pegawai tanpa departemen tidak dapat diberi role akses", service.ErrValidation)
+		}
+		allowedSvc := map[string]bool{}
+		if o.db != nil {
+			var mapped []entity.DepartmentService
+			o.db.Where("department_id = ? AND is_active = ?", *req.DepartmentID, true).Find(&mapped)
+			for _, m := range mapped {
+				allowedSvc[m.ServiceID] = true
+			}
+		}
+		if len(allowedSvc) == 0 {
+			return nil, fmt.Errorf("%w: unit kerja pegawai belum di-mapping ke service mana pun — lengkapi di Pengaturan Organisasi → Akses Service per Unit, atau onboard tanpa role", service.ErrValidation)
+		}
+		for _, rid := range ids {
+			info, gErr := o.perm.GetRole(rid)
+			if gErr != nil {
+				return nil, fmt.Errorf("%w: %v", service.ErrValidation, gErr)
+			}
+			if !allowedSvc[info.ServiceID] {
+				return nil, fmt.Errorf("%w: role %q tidak dapat diberikan — service-nya tidak ter-mapping untuk unit kerja pegawai ini (cek Akses Service per Unit)", service.ErrValidation, info.Name)
+			}
+			roleInfo[rid] = *info
+		}
 	}
 
 	// Step 1: SSO user — realm roles dari KAMUS employee_types (dynamic); fallback built-in.
@@ -86,7 +119,8 @@ func (o *OnboardingService) OnboardEmployee(req service.OnboardRequest, createdB
 	// Step 2b: unit assignments (primary + secondary utk dual affiliation)
 	o.writeUnitAssignments(emp, &req, createdBy)
 
-	// Verifikasi realm roles — SSO bisa menurunkan ke default jika service token bermasalah.
+	// Verifikasi realm roles (audit H4): mismatch = kondisi inkonsisten yang tidak boleh
+	// lolos diam-diam — rollback data HC lokal + instruksi hapus user SSO, JANGAN lanjut.
 	// Normalisasi: SSO mengembalikan slug array (roles) + display name (role).
 	roleNameToSlug := map[string]string{"lecturer": "lecture", "student": "student", "staff": "staff"}
 	gotRealms := map[string]bool{}
@@ -103,21 +137,48 @@ func (o *OnboardingService) OnboardEmployee(req service.OnboardRequest, createdB
 		}
 		gotRealms[got] = true
 	}
+	missingRealms := []string{}
 	for _, want := range realmRoles {
 		if !gotRealms[want] {
-			warnings = append(warnings, fmt.Sprintf(
-				"Realm SSO %q tidak ter-assign (diperoleh: %v) — cek client credentials HC di SSO", want, ssoResp.Data.Roles))
+			missingRealms = append(missingRealms, want)
 		}
 	}
+	if len(missingRealms) > 0 {
+		o.rollbackEmployee(emp.ID) // best-effort: hapus employee+movement+assignment lokal
+		return nil, fmt.Errorf(
+			"verifikasi realm SSO gagal: realm %v tidak ter-assign (diperoleh: %v) — data pegawai lokal sudah di-rollback; "+
+				"hapus user SSO %q (id %s) via admin SSO lalu ulangi onboard",
+			missingRealms, ssoResp.Data.Roles, ssoResp.Data.Username, userID)
+	}
 
-	// Step 3: Role akses lintas service (best-effort per role — employee sudah jadi).
-	// NOTE Fase A: validasi role⊆mapping-departemen dilakukan di UI; server-side menyusul (Fase B).
-	for _, roleID := range req.AllRoleIDs() {
-		if err := o.perm.AssignRole(userID, roleID, createdBy); err != nil {
-			log.Printf("[hc-onboard] WARNING step 3 (assign role %s utk user %s): %v", roleID, userID, err)
-			warnings = append(warnings,
-				"Sebagian role GAGAL di-assign — employee sudah tersimpan. Assign ulang manual via menu Role/User Permission")
+	// Step 3: Role akses lintas service — retry 1x + status per-role (audit H4).
+	assign := func(userID, roleID string) error {
+		var err error
+		for attempt := 0; attempt < 2; attempt++ {
+			if err = o.perm.AssignRole(userID, roleID, createdBy); err == nil {
+				return nil
+			}
+			time.Sleep(300 * time.Millisecond)
 		}
+		return err
+	}
+	for _, roleID := range req.AllRoleIDs() {
+		name := roleID
+		if info, ok := roleInfo[roleID]; ok && info.Name != "" {
+			name = info.Name
+		}
+		if err := assign(userID, roleID); err != nil {
+			log.Printf("[hc-onboard] WARNING step 3 (assign role %s utk user %s): %v", roleID, userID, err)
+			roleResults = append(roleResults, service.RoleResult{
+				RoleID: roleID, RoleName: name, Status: "failed", Error: err.Error(),
+			})
+			warnings = append(warnings,
+				fmt.Sprintf("Role %q GAGAL di-assign — employee sudah tersimpan. Assign ulang manual via menu Role/User Permission", name))
+			continue
+		}
+		roleResults = append(roleResults, service.RoleResult{
+			RoleID: roleID, RoleName: name, Status: "assigned",
+		})
 	}
 
 	return &service.OnboardResult{
@@ -131,7 +192,66 @@ func (o *OnboardingService) OnboardEmployee(req service.OnboardRequest, createdB
 		EmployeeType:   req.EmployeeType,
 		Status:         "active",
 		Warnings:       warnings,
+		RoleResults:    roleResults,
 	}, nil
+}
+
+// SetDepartmentServices — set ulang mapping departemen→service (UI Pengaturan Organisasi,
+// tab "Akses Service per Unit"). Validasi: departemen harus ada; setiap service_id harus
+// terdaftar di permission-service. Transaksional: replace mapping lama departemen tsb.
+func (o *OnboardingService) SetDepartmentServices(deptID string, serviceIDs []string, actor string) error {
+	if o.db == nil {
+		return fmt.Errorf("konfigurasi DB tidak tersedia")
+	}
+	var dept entity.Department
+	if err := o.db.First(&dept, "id = ?", deptID).Error; err != nil {
+		return fmt.Errorf("%w: departemen tidak ditemukan", service.ErrValidation)
+	}
+	svcList, err := o.perm.ListServices()
+	if err != nil {
+		return fmt.Errorf("gagal memuat daftar service dari permission-service: %w", err)
+	}
+	known := map[string]string{} // id → name
+	for _, s := range svcList {
+		known[s.ID] = s.Name
+	}
+	seen := map[string]bool{}
+	for _, sid := range serviceIDs {
+		if _, ok := known[sid]; !ok {
+			return fmt.Errorf("%w: service %s tidak terdaftar di permission-service", service.ErrValidation, sid)
+		}
+		seen[sid] = true
+	}
+	return o.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("department_id = ?", deptID).Delete(&entity.DepartmentService{}).Error; err != nil {
+			return err
+		}
+		for sid := range seen {
+			row := entity.DepartmentService{
+				DepartmentID: deptID,
+				ServiceID:    sid,
+				ServiceName:  known[sid],
+				IsActive:     true,
+				CreatedBy:    actor,
+			}
+			if err := tx.Create(&row).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// rollbackEmployee — hapus data HC lokal pegawai (employee + movement + unit assignment).
+// Best-effort; dipakai saat verifikasi realm gagal agar tidak ada data setengah jadi (audit H4).
+func (o *OnboardingService) rollbackEmployee(employeeID string) {
+	if o.db == nil || employeeID == "" {
+		return
+	}
+	o.db.Exec("DELETE FROM movement_details WHERE movement_id IN (SELECT id FROM employee_movements WHERE employee_id = ?)", employeeID)
+	o.db.Exec("DELETE FROM employee_movements WHERE employee_id = ?", employeeID)
+	o.db.Exec("DELETE FROM employee_unit_assignments WHERE employee_id = ?", employeeID)
+	o.db.Exec("DELETE FROM employees WHERE id = ?", employeeID)
 }
 
 // preFlight — validasi lokal HC sebelum menyentuh SSO (fail-fast, no side effect)
