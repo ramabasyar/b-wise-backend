@@ -21,6 +21,14 @@ type FlowStep struct {
 	UserID string `json:"user_id,omitempty"`
 }
 
+// flowHasSteps - true bila flow JSON berisi minimal satu langkah valid.
+// Flow kosong ('{}'/'[]'/invalid) TIDAK boleh memasukkan tiket ke menunggu_approval
+// karena tidak ada approval yang bisa diputuskan (jalan buntu - ditemukan smoke lokal 31 Okt).
+func flowHasSteps(flowJSON string) bool {
+	var steps []FlowStep
+	return json.Unmarshal([]byte(flowJSON), &steps) == nil && len(steps) > 0
+}
+
 // SetResolver - sambungkan resolusi approver ke HC + SSO (dipanggil main.go).
 func (s *Service) SetResolver(hcURL, ssoURL, clientID, clientSecret string) {
 	s.hcURL = hcURL
@@ -104,10 +112,10 @@ func (s *Service) initApprovalFlow(ticketID, flowJSON, requesterID string, t *en
 			continue
 		}
 		row := entity.TicketApproval{
-			Base:      entity.Base{},
-			TicketID:  ticketID,
-			Step:      st.Step,
-			Rule:      st.Rule,
+			Base:       entity.Base{},
+			TicketID:   ticketID,
+			Step:       st.Step,
+			Rule:       st.Rule,
 			ApproverID: approver,
 		}
 		_ = s.db.Create(&row).Error
@@ -131,7 +139,6 @@ func (s *Service) pendingApproval(ticketID string) (*entity.TicketApproval, erro
 	return &row, nil
 }
 
-
 // ApprovalInboxItem - baris kotak approval (AP-03).
 type ApprovalInboxItem struct {
 	ApprovalID string `json:"approval_id"`
@@ -151,7 +158,7 @@ func (s *Service) ApprovalInbox(userID string) ([]ApprovalInboxItem, error) {
 		Joins("JOIN tickets t ON t.id = ta.ticket_id").
 		Where("ta.approver_id = ? AND (ta.decision IS NULL OR ta.decision = '')", userID).
 		Where("t.status IN ?", []string{ticketstate.MenungguApproval, ticketstate.MenungguPemohon}).
-	Where("NOT EXISTS (SELECT 1 FROM ticket_approvals x WHERE x.ticket_id = ta.ticket_id AND x.step < ta.step AND (x.decision IS NULL OR x.decision = ''))").
+		Where("NOT EXISTS (SELECT 1 FROM ticket_approvals x WHERE x.ticket_id = ta.ticket_id AND x.step < ta.step AND (x.decision IS NULL OR x.decision = ''))").
 		Order("ta.created_at ASC").Scan(&rows).Error
 	return rows, err
 }

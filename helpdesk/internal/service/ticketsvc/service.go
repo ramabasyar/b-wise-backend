@@ -99,7 +99,7 @@ func (s *Service) Create(p CreateParams) (*entity.Ticket, error) {
 	}
 
 	status := ticketstate.Baru
-	if svcApproval != "" {
+	if flowHasSteps(svcApproval) {
 		status = ticketstate.MenungguApproval
 	}
 	conf := "normal"
@@ -135,7 +135,7 @@ func (s *Service) Create(p CreateParams) (*entity.Ticket, error) {
 	}
 	_ = s.AddSystemEvent(t.ID, "tiket dibuat", team.Code)
 	s.notifyInApp(p.RequesterID, "tiket_dibuat", &t, "Tiket "+t.Number+" dibuat", "Permintaan Anda diterima dan masuk antrean "+team.Code+".")
-	if svcApproval != "" {
+	if flowHasSteps(svcApproval) {
 		s.initApprovalFlow(t.ID, svcApproval, p.RequesterID, &t)
 	}
 	return &t, nil
