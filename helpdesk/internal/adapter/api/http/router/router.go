@@ -125,6 +125,21 @@ func SetupWithLogger(
 		// Notifikasi in-app (self-service; PM-07).
 		v1.GET("/notifications", handlers.Ticket.Notifications)
 		v1.POST("/notifications/read", handlers.Ticket.NotificationsRead)
+
+		// Admin unit (KT-03/KT-04) - ber-permission.
+		v1.GET("/services", permCheck.RequirePermission("helpdesk.catalog.manage"), handlers.Ticket.MyServices)
+		v1.POST("/services", permCheck.RequirePermission("helpdesk.catalog.manage"), handlers.Ticket.CreateService)
+		v1.PUT("/services/:id", permCheck.RequirePermission("helpdesk.catalog.manage"), handlers.Ticket.UpdateService)
+		v1.GET("/categories", handlers.Ticket.Categories)
+		v1.POST("/categories", permCheck.RequirePermission("helpdesk.catalog.manage"), handlers.Ticket.CreateCategory)
+		v1.POST("/teams/:id/members", permCheck.RequirePermission("helpdesk.teams.manage"), handlers.Ticket.AddMember)
+		v1.DELETE("/teams/:id/members/:userId", permCheck.RequirePermission("helpdesk.teams.manage"), handlers.Ticket.RemoveMember)
+
+		// Front office & survei & laporan.
+		v1.POST("/tickets/:id/classify", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.Classify)
+		v1.POST("/tickets/:id/csat", handlers.Ticket.SubmitCSAT)
+		v1.GET("/reports/summary", permCheck.RequirePermission("helpdesk.reports.read"), handlers.Ticket.ReportSummary)
+		v1.GET("/reports/export", permCheck.RequirePermission("helpdesk.reports.read"), handlers.Ticket.ExportCSV)
 	}
 	_ = permCheck
 
