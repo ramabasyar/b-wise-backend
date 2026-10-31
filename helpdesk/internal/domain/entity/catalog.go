@@ -30,6 +30,7 @@ type Service struct {
 	ApprovalFlow    string `json:"approval_flow,omitempty" gorm:"type:jsonb"`
 	TaskTemplate    string `json:"task_template,omitempty" gorm:"type:jsonb"`
 	Confidentiality string `json:"confidentiality" gorm:"type:varchar(20);default:'normal'"`
+	AutoCloseDays   int    `json:"auto_close_days,omitempty" gorm:"default:0"`
 	Status          string `json:"status" gorm:"type:varchar(20);default:'draft';index"`
 }
 

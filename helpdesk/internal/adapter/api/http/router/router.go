@@ -164,6 +164,12 @@ func SetupWithLogger(
 		v1.GET("/tickets/:id/tasks", handlers.Ticket.TasksGet)
 		v1.POST("/tickets/:id/tasks", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.TaskAdd)
 		v1.POST("/tickets/:id/tasks/:taskId/done", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.TaskDone)
+
+		// Laporan lanjutan (LP-03..LP-06; blueprint 6.10).
+		v1.GET("/reports/csat-lkps", permCheck.RequirePermission("helpdesk.reports.read"), handlers.Ticket.ReportCSATLKPS)
+		v1.GET("/reports/services-performance", permCheck.RequirePermission("helpdesk.reports.read"), handlers.Ticket.ReportServicesPerformance)
+		v1.GET("/reports/rooms", permCheck.RequirePermission("helpdesk.reports.read"), handlers.Ticket.ReportRooms)
+		v1.GET("/reports/overview", permCheck.RequirePermission("helpdesk.reports.read"), handlers.Ticket.ReportOverview)
 	}
 	_ = permCheck
 

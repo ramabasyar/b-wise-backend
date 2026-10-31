@@ -22,12 +22,14 @@ func (s *Service) RunApprovalWatchers(ctx context.Context, every time.Duration) 
 		ticker := time.NewTicker(every)
 		defer ticker.Stop()
 		s.scanApprovals()
+		s.scanRequesterReminders()
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
 				s.scanApprovals()
+				s.scanRequesterReminders()
 			}
 		}
 	}()

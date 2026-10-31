@@ -35,6 +35,7 @@ func (s *Service) SubmitCSAT(ticketID, userID string, c entity.CSATResponse) (*e
 	if err := s.db.Create(&c).Error; err != nil {
 		return nil, fmt.Errorf("%w: survei sudah pernah diisi", ErrValidation)
 	}
+	s.followUpSurveiKurang(ticketID, c)
 	return &c, nil
 }
 
