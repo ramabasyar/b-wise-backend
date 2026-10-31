@@ -1,0 +1,85 @@
+# perm.manifest.yaml — sumber kebenaran permissions & menu Pusat Layanan (helpdesk).
+# Self-sync otomatis ke Permission Service setiap boot (idempotent).
+# Blueprint v1.1: dokumen/B-Wise/Helpdesk/2026-10-25-Blueprint-Pusat-Layanan.md (§4.3, §9.2)
+service:
+  name: helpdesk
+  description: "Pusat Layanan B-Wise — satu pintu tiket layanan seluruh unit kampus"
+  base_url: ""
+  sync_enabled: true
+
+# Catatan: endpoint pemohon (katalog, Tiket Saya) TANPA CheckAccess (pola self-service) —
+# permission di bawah untuk petugas/admin sesuai blueprint §4.3.
+permissions:
+  - permission: helpdesk.queue.read
+    description: Lihat antrean tim di Pusat Layanan
+  - permission: helpdesk.tickets.work
+    description: Ambil, balas, tugaskan, dan transfer tiket (petugas)
+  - permission: helpdesk.catalog.manage
+    description: Kelola layanan, formulir, SLA, kategori katalog
+  - permission: helpdesk.teams.manage
+    description: Kelola anggota tim dan jam layanan
+  - permission: helpdesk.reports.read
+    description: Lihat dashboard dan laporan (unit serta lintas unit)
+  - permission: helpdesk.settings.manage
+    description: Pengaturan global Pusat Layanan
+  - permission: helpdesk.audit.read
+    description: Baca jejak audit akses tiket rahasia
+
+menu:
+  - label: Pusat Layanan
+    path: /dashboard/helpdesk
+    icon: LifeBuoy
+    sort_order: 55
+    children:
+      - label: Katalog Layanan
+        path: /dashboard/helpdesk
+        icon: LayoutGrid
+      - label: Tiket Saya
+        path: /dashboard/helpdesk/my-tickets
+        icon: Ticket
+      - label: Antrean Tim
+        path: /dashboard/helpdesk/queue
+        icon: Inbox
+        required_permission: helpdesk.queue.read
+      - label: Kelola Layanan
+        path: /dashboard/helpdesk/services
+        icon: Layers
+        required_permission: helpdesk.catalog.manage
+      - label: Laporan
+        path: /dashboard/helpdesk/reports
+        icon: BarChart3
+        required_permission: helpdesk.reports.read
+      - label: Pengaturan
+        path: /dashboard/helpdesk/settings
+        icon: Settings
+        required_permission: helpdesk.settings.manage
+
+# Role default — di-upsert self-sync (union, tidak menghapus buatan admin). Blueprint §4.3.
+roles:
+  - name: Helpdesk Agent
+    description: Petugas tim — antrean dan pengerjaan tiket
+    permissions:
+      - helpdesk.queue.read
+      - helpdesk.tickets.work
+  - name: Helpdesk Unit Admin
+    description: Admin unit — kelola layanan/formulir/SLA, anggota tim, laporan unit
+    permissions:
+      - helpdesk.queue.read
+      - helpdesk.tickets.work
+      - helpdesk.catalog.manage
+      - helpdesk.teams.manage
+      - helpdesk.reports.read
+  - name: Helpdesk Viewer
+    description: Pemantau laporan (pimpinan, LPM) — baca saja
+    permissions:
+      - helpdesk.reports.read
+  - name: Helpdesk Admin
+    description: Admin sistem Pusat Layanan — pengaturan global dan audit
+    permissions:
+      - helpdesk.queue.read
+      - helpdesk.tickets.work
+      - helpdesk.catalog.manage
+      - helpdesk.teams.manage
+      - helpdesk.reports.read
+      - helpdesk.settings.manage
+      - helpdesk.audit.read
