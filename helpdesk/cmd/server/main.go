@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rama/b-wise/helpdesk/internal/adapter/api/http/handler"
 	"github.com/rama/b-wise/helpdesk/internal/adapter/api/http/router"
 	"github.com/rama/b-wise/helpdesk/internal/adapter/cache"
 	"github.com/rama/b-wise/helpdesk/internal/adapter/config"
@@ -18,6 +19,7 @@ import (
 	"github.com/rama/b-wise/helpdesk/internal/domain/entity"
 	"github.com/rama/b-wise/helpdesk/internal/service/permissionsync"
 	"github.com/rama/b-wise/helpdesk/internal/service/teamsync"
+	"github.com/rama/b-wise/helpdesk/internal/service/ticketsvc"
 	"gorm.io/gorm"
 )
 
@@ -74,6 +76,7 @@ func main() {
 				&entity.SLAPolicy{}, &entity.BusinessCalendar{},
 				&entity.Ticket{}, &entity.TicketEvent{}, &entity.TicketAttachment{},
 				&entity.TicketApproval{}, &entity.CannedResponse{}, &entity.CSATResponse{}, &entity.NotificationOutbox{},
+				&entity.TicketSequence{},
 			); err != nil {
 				zapLogger.Info(fmt.Sprintf("[startup] auto-migrate error: %v", err))
 			} else {
@@ -116,6 +119,10 @@ func main() {
 	// 	// Item: myHandler,  // uncomment field in router.Handlers first
 	// }
 	handlers := &router.Handlers{}
+	if db != nil {
+		ticketSvc := ticketsvc.New(db)
+		handlers.Ticket = handler.NewTicketHandler(ticketSvc)
+	}
 
 	// ===== Setup router =====
 	zapGlobal := zapLogger.SugaredLogger.Desugar()

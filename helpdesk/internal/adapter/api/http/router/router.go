@@ -26,20 +26,7 @@ func Setup() *gin.Engine {
 	// API routes (add your service-specific routes here)
 	api := r.Group("/api")
 
-	// Permission middleware — siap pakai (selaras Permission Service Tahap 1-3:
-	// wildcard '*', batch check, cache invalidation otomatis).
-	// Contoh wiring entity "items":
-	//
-	//	permCheck := middleware.NewPermissionCheck(permissionURL, serviceName).
-	//		WithSSO(ssoURL, serviceClientID, serviceClientSecret)
-	//	items := api.Group("/items")
-	//	items.Use(jwksAuth.RequireAuth())
-	//	items.Use(permCheck.CheckAccess())
-	//	{
-	//		items.GET("", permCheck.RequirePermission("items.read"), h.Item.List)
-	//		items.POST("", permCheck.RequirePermission("items.write"), h.Item.Create)
-	//		tools.GET("", permCheck.RequireAnyPermission("items.read", "items.admin"), h.Item.List)
-	//	}
+	// Permission middleware - siap pakai (contoh wiring; versi aktif ada di SetupWithLogger).
 	_ = api
 
 	return r
@@ -99,28 +86,37 @@ func SetupWithLogger(
 
 	api := r.Group("/api")
 
-	// Permission middleware — siap pakai (selaras Permission Service Tahap 1-3:
-	// wildcard '*', batch check, cache invalidation otomatis).
-	// Contoh wiring entity "items":
-	//
-	//	permCheck := middleware.NewPermissionCheck(permissionURL, serviceName).
-	//		WithSSO(ssoURL, serviceClientID, serviceClientSecret)
-	//	items := api.Group("/items")
-	//	items.Use(jwksAuth.RequireAuth())
-	//	items.Use(permCheck.CheckAccess())
-	//	{
-	//		items.GET("", permCheck.RequirePermission("items.read"), h.Item.List)
-	//		items.POST("", permCheck.RequirePermission("items.write"), h.Item.Create)
-	//		tools.GET("", permCheck.RequireAnyPermission("items.read", "items.admin"), h.Item.List)
-	//	}
-	_ = api
+	// Permission middleware - selaras Permission Service Tahap 1-3.
+	permCheck := middleware.NewPermissionCheck(permissionURL, serviceName).
+		WithSSO(ssoURL, serviceClientID, serviceClientSecret)
+
+	if handlers.Ticket != nil {
+		v1 := api.Group("/v1")
+
+		// Pemohon - self-service TANPA CheckAccess (pola endpoint cuti; blueprint 4.2).
+		tk := v1.Group("/tickets")
+		{
+			tk.POST("", handlers.Ticket.Create)
+			tk.GET("", handlers.Ticket.Mine) // Tiket Saya
+			tk.GET("/:id", handlers.Ticket.Detail)
+			tk.POST("/:id/events", handlers.Ticket.AddEvent)
+			tk.POST("/:id/status", handlers.Ticket.ChangeStatus)
+
+			// Petugas - butuh permission helpdesk.tickets.work.
+			tk.POST("/:id/assign", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.Assign)
+			tk.POST("/:id/take", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.Take)
+			tk.POST("/:id/transfer", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.Transfer)
+		}
+
+		// Antrean tim petugas - helpdesk.queue.read.
+		v1.GET("/queue", permCheck.RequirePermission("helpdesk.queue.read"), handlers.Ticket.Queue)
+	}
+	_ = permCheck
 
 	return r
 }
 
 // Handlers holds all route handlers for the service.
-// Add your handler fields here when creating new entities.
 type Handlers struct {
-	// Item  *handler.ItemHandler  // sample
-	_ struct{} // prevent empty struct warning
+	Ticket *handler.TicketHandler
 }
