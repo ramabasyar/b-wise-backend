@@ -172,6 +172,12 @@ func SetupWithLogger(
 			sc.PUT("", permCheck.RequirePermission("solve.execute"), h.SolveConfig.Update)
 		}
 	}
+	if h.Calendar != nil {
+		cal := api.Group("/calendars")
+		cal.Use(jwksAuth.RequireAuth(), jwksAuth.RequireServiceToken())
+		cal.GET("/holidays", h.Calendar.Holidays)
+	}
+
 	if h.TimePolicy != nil {
 		tp := api.Group("/time-policy")
 		tp.Use(jwksAuth.RequireAuth(), permCheck.CheckAccess())
@@ -256,4 +262,5 @@ type Handlers struct {
 	Solve       *handler.SolveHandler
 	SolveConfig *handler.SolveConfigHandler
 	TimePolicy  *handler.TimePolicyHandler
+	Calendar    *handler.CalendarHandler
 }

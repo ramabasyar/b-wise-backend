@@ -277,3 +277,15 @@ func (j *JWKSAuth) fetchJWKS() error {
 	j.lastFetch = time.Now()
 	return nil
 }
+
+// RequireServiceToken requires a service token (machine-to-machine only).
+func (j *JWKSAuth) RequireServiceToken() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		isService, _ := c.Get("is_service_token")
+		if isService != true {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "service token required"})
+			return
+		}
+		c.Next()
+	}
+}

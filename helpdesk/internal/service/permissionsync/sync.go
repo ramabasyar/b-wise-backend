@@ -35,7 +35,7 @@ type Manifest struct {
 		Permission  string `yaml:"permission" json:"permission"`
 		Description string `yaml:"description" json:"description"`
 	} `yaml:"permissions" json:"permissions"`
-	Roles []ManifestRole `yaml:"roles" json:"roles"`
+	Roles []ManifestRole     `yaml:"roles" json:"roles"`
 	Menu  []ManifestMenuItem `yaml:"menu" json:"menu"`
 }
 
@@ -73,10 +73,10 @@ func LoadManifest(path string) (*Manifest, error) {
 
 // Syncer — client self-sync
 type Syncer struct {
-	cfg       config.SSOConfig
-	manifest  *Manifest
-	client    *http.Client
-	logFn     func(format string, args ...interface{})
+	cfg      config.SSOConfig
+	manifest *Manifest
+	client   *http.Client
+	logFn    func(format string, args ...interface{})
 }
 
 // New membuat syncer dari config SSO + manifest

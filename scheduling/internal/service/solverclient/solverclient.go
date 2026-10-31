@@ -73,11 +73,11 @@ type SolverSession struct {
 	RoomType        string   `json:"room_type"`
 	GroupID         string   `json:"group_id"`
 	GroupSize       int      `json:"group_size"`
-	LecturerID      string   `json:"lecturer_id"`            // dosen utama (display/fallback)
-	LecturerIDs     []string `json:"lecturer_ids,omitempty"` // H5/H7: semua dosen yang harus bebas slot (parallel)
-	BlockedDays     []int    `json:"blocked_days,omitempty"` // F4-C: hari terlarang sesi (Sabtu=6 utk non-S2)
-	GroupProgram    string   `json:"group_program,omitempty"`    // F4-D: program rombel (match ke rooms.program_codes)
-	AllowedRooms    []string `json:"allowed_rooms,omitempty"`    // F4-D: patokan ruang spesifik offering (menang)
+	LecturerID      string   `json:"lecturer_id"`             // dosen utama (display/fallback)
+	LecturerIDs     []string `json:"lecturer_ids,omitempty"`  // H5/H7: semua dosen yang harus bebas slot (parallel)
+	BlockedDays     []int    `json:"blocked_days,omitempty"`  // F4-C: hari terlarang sesi (Sabtu=6 utk non-S2)
+	GroupProgram    string   `json:"group_program,omitempty"` // F4-D: program rombel (match ke rooms.program_codes)
+	AllowedRooms    []string `json:"allowed_rooms,omitempty"` // F4-D: patokan ruang spesifik offering (menang)
 }
 type SolverRoom struct {
 	ID           string   `json:"id"`

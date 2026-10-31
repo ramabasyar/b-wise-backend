@@ -17,8 +17,8 @@ type Interval struct {
 // Calendar - kalender jam layanan (business_calendars.weekly_hours jsonb).
 type Calendar struct {
 	Weekly   map[string][]Interval `json:"weekly_hours"`
-	Timezone string               `json:"timezone"`
-	Holidays []string             `json:"-"`
+	Timezone string                `json:"timezone"`
+	Holidays []string              `json:"-"`
 }
 
 var dayKeys = []string{"sun", "mon", "tue", "wed", "thu", "fri", "sat"}

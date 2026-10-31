@@ -11,9 +11,9 @@ import (
 
 // Worker - pemantau SLA berkala (SL-04): peringatan 75%, pelanggaran, eskalasi 150%.
 type Worker struct {
-	db   *gorm.DB
-	log  func(format string, args ...interface{})
-	now  func() time.Time
+	db  *gorm.DB
+	log func(format string, args ...interface{})
+	now func() time.Time
 }
 
 func NewWorker(db *gorm.DB, logFn func(string, ...interface{})) *Worker {

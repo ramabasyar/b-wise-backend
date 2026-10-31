@@ -22,9 +22,9 @@ func TestTransisiLegal(t *testing.T) {
 func TestTransisiIlegal(t *testing.T) {
 	illegal := [][2]string{
 		{Baru, Selesai}, {Baru, Dikerjakan}, {Baru, Ditutup},
-		{Terbuka, Selesai},        // harus lewat Dikerjakan
+		{Terbuka, Selesai},           // harus lewat Dikerjakan
 		{MenungguPihakLain, Selesai}, // harus kembali ke Dikerjakan dulu
-		{Ditutup, Dikerjakan},      // terminal: tidak dibuka ulang (§5.3)
+		{Ditutup, Dikerjakan},        // terminal: tidak dibuka ulang (§5.3)
 		{Ditolak, Terbuka},
 		{Dibatalkan, Baru},
 		{Selesai, Baru},

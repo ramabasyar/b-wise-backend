@@ -33,7 +33,7 @@ func (Building) TableName() string { return "buildings" }
 type RoomType struct {
 	ID          string    `json:"id" gorm:"primaryKey;type:varchar(36);default:gen_random_uuid()"`
 	Code        string    `json:"code" gorm:"type:varchar(30);uniqueIndex;not null"` // theory, lab, klinik, studio…
-	Name        string    `json:"name" gorm:"type:varchar(150);not null"`           // "Laboratorium Komputer"
+	Name        string    `json:"name" gorm:"type:varchar(150);not null"`            // "Laboratorium Komputer"
 	Description string    `json:"description,omitempty" gorm:"type:varchar(300)"`
 	ForTheory   bool      `json:"for_theory" gorm:"default:false"`
 	ForPractice bool      `json:"for_practice" gorm:"default:false"`
@@ -47,14 +47,15 @@ func (RoomType) TableName() string { return "room_types" }
 
 // FacilityType — kamus fasilitas ruang (dinamis).
 // kind menentukan bentuk nilai di Room.Facilities (jsonb {code: value}):
-//   "boolean" → true/false (ada/tidak, mis. proyektor)
-//   "number"  → jumlah unit (mis. pc: 40, hospital_bed: 8)
+//
+//	"boolean" → true/false (ada/tidak, mis. proyektor)
+//	"number"  → jumlah unit (mis. pc: 40, hospital_bed: 8)
 type FacilityType struct {
 	ID        string    `json:"id" gorm:"primaryKey;type:varchar(36);default:gen_random_uuid()"`
 	Code      string    `json:"code" gorm:"type:varchar(30);uniqueIndex;not null"` // projector, pc, ac…
 	Name      string    `json:"name" gorm:"type:varchar(150);not null"`
 	Kind      string    `json:"kind" gorm:"type:varchar(10);not null;default:'boolean'"` // boolean|number
-	UnitLabel string    `json:"unit_label,omitempty" gorm:"type:varchar(30)"` // "unit", "bed"…
+	UnitLabel string    `json:"unit_label,omitempty" gorm:"type:varchar(30)"`            // "unit", "bed"…
 	SortOrder int       `json:"sort_order" gorm:"default:0"`
 	IsActive  bool      `json:"is_active" gorm:"default:true"`
 	CreatedAt time.Time `json:"created_at"`
@@ -65,10 +66,12 @@ func (FacilityType) TableName() string { return "facility_types" }
 
 // CourseType — kamus jenis mata kuliah dinamis.
 // room_need menentukan kebutuhan ruang sesi di solver:
-//   "theory"   → ruang dengan flag for_theory
-//   "practice" → ruang dengan flag for_practice
-//   "any"      → semua ruang eligible (for_theory ∪ for_practice)
-//   "none"     → tanpa ruang fisik (online/kerja lapangan) — solver melewati
+//
+//	"theory"   → ruang dengan flag for_theory
+//	"practice" → ruang dengan flag for_practice
+//	"any"      → semua ruang eligible (for_theory ∪ for_practice)
+//	"none"     → tanpa ruang fisik (online/kerja lapangan) — solver melewati
+//
 // Course.Type menyimpan CODE tipe ini (backward compatible).
 type CourseType struct {
 	ID          string    `json:"id" gorm:"primaryKey;type:varchar(36);default:gen_random_uuid()"`
@@ -89,9 +92,9 @@ func (CourseType) TableName() string { return "course_types" }
 type SolveConfig struct {
 	ID              string    `json:"id" gorm:"primaryKey;type:varchar(36)"`
 	Code            string    `json:"code" gorm:"type:varchar(20);uniqueIndex;not null"` // "default"
-	SpreadWeight    int       `json:"spread_weight" gorm:"default:5"`   // S1: sesi offering sama di hari sama
-	RoomWasteWeight int       `json:"room_waste_weight" gorm:"default:2"` // S2: ruang boros per 20 kursi kosong
-	LastSlotWeight  int       `json:"last_slot_weight" gorm:"default:1"`  // S3: sesi di slot terakhir hari
+	SpreadWeight    int       `json:"spread_weight" gorm:"default:5"`                    // S1: sesi offering sama di hari sama
+	RoomWasteWeight int       `json:"room_waste_weight" gorm:"default:2"`                // S2: ruang boros per 20 kursi kosong
+	LastSlotWeight  int       `json:"last_slot_weight" gorm:"default:1"`                 // S3: sesi di slot terakhir hari
 	Notes           string    `json:"notes,omitempty" gorm:"type:text"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
@@ -102,13 +105,13 @@ func (SolveConfig) TableName() string { return "solve_configs" }
 // TimePolicy — kebijakan durasi 1 SKS (singleton, code="default").
 // Standar umum (Permendikbud): teori 50 mnt/SKS, praktikum 170 mnt/SKS.
 type TimePolicy struct {
-	ID                string    `json:"id" gorm:"primaryKey;type:varchar(36)"`
-	Code              string    `json:"code" gorm:"type:varchar(20);uniqueIndex;not null"`
-	SksMinutesTheory  int       `json:"sks_minutes_theory" gorm:"default:50"`  // menit per 1 SKS teori
-	SksMinutesPractice int      `json:"sks_minutes_practice" gorm:"default:170"` // menit per 1 SKS praktikum
-	Notes             string    `json:"notes,omitempty" gorm:"type:text"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID                 string    `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	Code               string    `json:"code" gorm:"type:varchar(20);uniqueIndex;not null"`
+	SksMinutesTheory   int       `json:"sks_minutes_theory" gorm:"default:50"`    // menit per 1 SKS teori
+	SksMinutesPractice int       `json:"sks_minutes_practice" gorm:"default:170"` // menit per 1 SKS praktikum
+	Notes              string    `json:"notes,omitempty" gorm:"type:text"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 func (TimePolicy) TableName() string { return "time_policies" }
@@ -116,21 +119,21 @@ func (TimePolicy) TableName() string { return "time_policies" }
 // Room — ruang. faculty_id NULL = ruang KOMUNAL (dipakai bersama lintas
 // fakultas/prodi — realita kampus kecil). Terisi = milik eksklusif fakultas.
 type Room struct {
-	ID         string         `json:"id" gorm:"primaryKey;type:varchar(36);default:gen_random_uuid()"`
-	BuildingID string         `json:"building_id" gorm:"type:varchar(36);index;not null"`
-	Code       string         `json:"code" gorm:"type:varchar(50);uniqueIndex;not null"` // R-301
-	Name       string         `json:"name" gorm:"type:varchar(150)"`
-	Type       string         `json:"type" gorm:"type:varchar(30);not null;default:'theory'"` // code dari tabel room_types
-	Capacity   int            `json:"capacity" gorm:"default:0"`
-	Floor      int            `json:"floor" gorm:"default:0"`
-	FacultyID  *string        `json:"faculty_id,omitempty" gorm:"type:varchar(36);index"`     // NULL = komunal
-	Facilities map[string]any `json:"facilities,omitempty" gorm:"type:jsonb;serializer:json"` // {pc:40, projector:true, ac:true}
-	ProgramCodes  []string    `json:"program_codes,omitempty" gorm:"type:jsonb;serializer:json"`   // F4-D: prodi yg berhak (kosong = komunal)
-	Notes      string         `json:"notes,omitempty" gorm:"type:text"`
-	IsActive   bool           `json:"is_active" gorm:"default:true"`
-	Source     string         `json:"source" gorm:"type:varchar(20);default:'manual'"`
-	CreatedAt  time.Time      `json:"created_at"`
-	UpdatedAt  time.Time      `json:"updated_at"`
+	ID           string         `json:"id" gorm:"primaryKey;type:varchar(36);default:gen_random_uuid()"`
+	BuildingID   string         `json:"building_id" gorm:"type:varchar(36);index;not null"`
+	Code         string         `json:"code" gorm:"type:varchar(50);uniqueIndex;not null"` // R-301
+	Name         string         `json:"name" gorm:"type:varchar(150)"`
+	Type         string         `json:"type" gorm:"type:varchar(30);not null;default:'theory'"` // code dari tabel room_types
+	Capacity     int            `json:"capacity" gorm:"default:0"`
+	Floor        int            `json:"floor" gorm:"default:0"`
+	FacultyID    *string        `json:"faculty_id,omitempty" gorm:"type:varchar(36);index"`        // NULL = komunal
+	Facilities   map[string]any `json:"facilities,omitempty" gorm:"type:jsonb;serializer:json"`    // {pc:40, projector:true, ac:true}
+	ProgramCodes []string       `json:"program_codes,omitempty" gorm:"type:jsonb;serializer:json"` // F4-D: prodi yg berhak (kosong = komunal)
+	Notes        string         `json:"notes,omitempty" gorm:"type:text"`
+	IsActive     bool           `json:"is_active" gorm:"default:true"`
+	Source       string         `json:"source" gorm:"type:varchar(20);default:'manual'"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
 
 	Building *Building `json:"building,omitempty" gorm:"foreignKey:BuildingID"`
 }
@@ -274,8 +277,8 @@ type AdjustmentProposal struct {
 	RoomAvailabilityID string    `json:"room_availability_id,omitempty" gorm:"type:varchar(36);index"`
 	Reason             string    `json:"reason" gorm:"type:varchar(200)"`
 	Status             string    `json:"status" gorm:"type:varchar(12);default:'pending';index"` // pending|applied|rejected
-	Changes            string    `json:"changes" gorm:"type:jsonb"`                             // diff per sesi
-	Unresolved         string    `json:"unresolved" gorm:"type:jsonb"`                          // sesi tak teratasi
+	Changes            string    `json:"changes" gorm:"type:jsonb"`                              // diff per sesi
+	Unresolved         string    `json:"unresolved" gorm:"type:jsonb"`                           // sesi tak teratasi
 	CreatedBy          string    `json:"created_by" gorm:"type:varchar(36)"`
 	DecidedBy          string    `json:"decided_by,omitempty" gorm:"type:varchar(36)"`
 	CreatedAt          time.Time `json:"created_at"`
@@ -310,13 +313,13 @@ type Offering struct {
 	CourseID        string    `json:"course_id" gorm:"type:varchar(36);index;not null"`
 	LecturerID      string    `json:"lecturer_id" gorm:"type:varchar(36);index"` // primary pengampu
 	ClassGroupID    string    `json:"class_group_id" gorm:"type:varchar(36);index;not null"`
-	SksEffective    int       `json:"sks_effective" gorm:"default:2"`              // bisa beda dr master (remedial dsb)
-	SessionsPerWeek int       `json:"sessions_per_week" gorm:"default:1"`          // meeting per minggu
-	SessionSks      int       `json:"session_sks" gorm:"default:2"`                // SKS per sesi (2 SKS = 1 sesi 100m)
-	PracticeSks     int       `json:"practice_sks" gorm:"default:0"`                // SKS praktikum/minggu (sesi blok terpisah, ruang for_practice)
-	RoomType        string    `json:"room_type,omitempty" gorm:"type:varchar(30)"` // pin tipe ruang (menang atas room_need)
-	AllowedRooms    []string  `json:"allowed_rooms,omitempty" gorm:"type:jsonb;serializer:json"` // F4-D: patokan ruang spesifik utk offering ini (menang atas program_codes ruang)
-	SiakadKelasID  string    `json:"siakad_kelas_id,omitempty" gorm:"type:varchar(30);uniqueIndex"` // data-id kelas siakad (traceability sync)
+	SksEffective    int       `json:"sks_effective" gorm:"default:2"`                                // bisa beda dr master (remedial dsb)
+	SessionsPerWeek int       `json:"sessions_per_week" gorm:"default:1"`                            // meeting per minggu
+	SessionSks      int       `json:"session_sks" gorm:"default:2"`                                  // SKS per sesi (2 SKS = 1 sesi 100m)
+	PracticeSks     int       `json:"practice_sks" gorm:"default:0"`                                 // SKS praktikum/minggu (sesi blok terpisah, ruang for_practice)
+	RoomType        string    `json:"room_type,omitempty" gorm:"type:varchar(30)"`                   // pin tipe ruang (menang atas room_need)
+	AllowedRooms    []string  `json:"allowed_rooms,omitempty" gorm:"type:jsonb;serializer:json"`     // F4-D: patokan ruang spesifik utk offering ini (menang atas program_codes ruang)
+	SiakadKelasID   string    `json:"siakad_kelas_id,omitempty" gorm:"type:varchar(30);uniqueIndex"` // data-id kelas siakad (traceability sync)
 	Notes           string    `json:"notes,omitempty" gorm:"type:text"`
 	IsActive        bool      `json:"is_active" gorm:"default:true"`
 	Source          string    `json:"source" gorm:"type:varchar(20);default:'manual'"`
@@ -333,19 +336,21 @@ func (Offering) TableName() string { return "offerings" }
 
 // OfferingLecturer — pengampu offering (multi-dosen, hasil verifikasi admin siakad 45% kelas).
 // Pattern:
-//   single        — 1 dosen sepanjang semester (tabel ini opsional utk kasus ini)
-//   parallel      — team teaching sejajar: >=2 dosen hadir di sesi sama (solver: SEMUA dosen harus bebas slot)
-//   split_period  — split pertemuan (mis. dosen A sesi 1-8, dosen B 9-16) — solver cukup dosen utama bebas
-//   split_session — varian split lain (mis. 1-6/7-11/12-16)
+//
+//	single        — 1 dosen sepanjang semester (tabel ini opsional utk kasus ini)
+//	parallel      — team teaching sejajar: >=2 dosen hadir di sesi sama (solver: SEMUA dosen harus bebas slot)
+//	split_period  — split pertemuan (mis. dosen A sesi 1-8, dosen B 9-16) — solver cukup dosen utama bebas
+//	split_session — varian split lain (mis. 1-6/7-11/12-16)
+//
 // PorsiSks = porsi SKS per dosen dari siakad (mis. 1.5).
 type OfferingLecturer struct {
 	ID           string    `json:"id" gorm:"primaryKey;type:varchar(36);default:gen_random_uuid()"`
 	OfferingID   string    `json:"offering_id" gorm:"type:varchar(36);uniqueIndex:uq_offering_lecturer,priority:1;not null"`
 	LecturerID   string    `json:"lecturer_id" gorm:"type:varchar(36);uniqueIndex:uq_offering_lecturer,priority:2;not null"`
-	Role         string    `json:"role" gorm:"type:varchar(20);default:'primary'"`     // primary|co|assistant
-	PorsiSks     float64   `json:"porsi_sks" gorm:"default:0"`                         // porsi SKS (siakad)
-	Pattern      string    `json:"pattern" gorm:"type:varchar(30);default:'single'"`  // single|parallel|split_period|split_session
-	PeriodDetail string    `json:"period_detail,omitempty" gorm:"type:varchar(100)"`  // "Sebelum UTS (1-8)" dst
+	Role         string    `json:"role" gorm:"type:varchar(20);default:'primary'"`   // primary|co|assistant
+	PorsiSks     float64   `json:"porsi_sks" gorm:"default:0"`                       // porsi SKS (siakad)
+	Pattern      string    `json:"pattern" gorm:"type:varchar(30);default:'single'"` // single|parallel|split_period|split_session
+	PeriodDetail string    `json:"period_detail,omitempty" gorm:"type:varchar(100)"` // "Sebelum UTS (1-8)" dst
 	SortOrder    int       `json:"sort_order" gorm:"default:0"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`

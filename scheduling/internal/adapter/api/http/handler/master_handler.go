@@ -14,20 +14,20 @@ import (
 // Semua route dilindungi permission middleware di router.
 
 type MasterHandler struct {
-	Buildings *service.CrudService[entity.Building]
-	Rooms      *service.CrudService[entity.Room]
-	RoomTypes  *service.CrudService[entity.RoomType]
+	Buildings     *service.CrudService[entity.Building]
+	Rooms         *service.CrudService[entity.Room]
+	RoomTypes     *service.CrudService[entity.RoomType]
 	FacilityTypes *service.CrudService[entity.FacilityType]
-	CourseTypes *service.CrudService[entity.CourseType]
-	Terms     *service.CrudService[entity.Term]
-	Courses   *service.CrudService[entity.Course]
-	Lecturers *service.CrudService[entity.Lecturer]
-	Groups    *service.CrudService[entity.ClassGroup]
-	Slots     *service.CrudService[entity.TimeSlot]
-	Offerings *service.CrudService[entity.Offering]
-	Avails    *service.CrudService[entity.LecturerAvailability]
-	RoomAvails *service.CrudService[entity.RoomAvailability]
-	CalEvents  *service.CrudService[entity.CalendarEvent]
+	CourseTypes   *service.CrudService[entity.CourseType]
+	Terms         *service.CrudService[entity.Term]
+	Courses       *service.CrudService[entity.Course]
+	Lecturers     *service.CrudService[entity.Lecturer]
+	Groups        *service.CrudService[entity.ClassGroup]
+	Slots         *service.CrudService[entity.TimeSlot]
+	Offerings     *service.CrudService[entity.Offering]
+	Avails        *service.CrudService[entity.LecturerAvailability]
+	RoomAvails    *service.CrudService[entity.RoomAvailability]
+	CalEvents     *service.CrudService[entity.CalendarEvent]
 }
 
 func errJSON(c *gin.Context, err error) {
@@ -214,20 +214,20 @@ func (h *MasterHandler) CalEventDelete() gin.HandlerFunc { return deleteHandler(
 // NewMasterHandlerDB — wiring semua CrudService dari koneksi DB.
 func NewMasterHandlerDB(db *gorm.DB) *MasterHandler {
 	return &MasterHandler{
-		Buildings: service.NewCrud[entity.Building](db),
-		Rooms:     service.NewCrud[entity.Room](db),
-		RoomTypes: service.NewCrud[entity.RoomType](db),
+		Buildings:     service.NewCrud[entity.Building](db),
+		Rooms:         service.NewCrud[entity.Room](db),
+		RoomTypes:     service.NewCrud[entity.RoomType](db),
 		FacilityTypes: service.NewCrud[entity.FacilityType](db),
-		CourseTypes: service.NewCrud[entity.CourseType](db),
-		Terms:     service.NewCrud[entity.Term](db),
-		Courses:   service.NewCrud[entity.Course](db),
-		Lecturers: service.NewCrud[entity.Lecturer](db),
-		Groups:    service.NewCrud[entity.ClassGroup](db),
-		Slots:     service.NewCrud[entity.TimeSlot](db),
-		Offerings: service.NewCrud[entity.Offering](db),
-		Avails:    service.NewCrud[entity.LecturerAvailability](db),
-		RoomAvails: service.NewCrud[entity.RoomAvailability](db),
-		CalEvents:  service.NewCrud[entity.CalendarEvent](db),
+		CourseTypes:   service.NewCrud[entity.CourseType](db),
+		Terms:         service.NewCrud[entity.Term](db),
+		Courses:       service.NewCrud[entity.Course](db),
+		Lecturers:     service.NewCrud[entity.Lecturer](db),
+		Groups:        service.NewCrud[entity.ClassGroup](db),
+		Slots:         service.NewCrud[entity.TimeSlot](db),
+		Offerings:     service.NewCrud[entity.Offering](db),
+		Avails:        service.NewCrud[entity.LecturerAvailability](db),
+		RoomAvails:    service.NewCrud[entity.RoomAvailability](db),
+		CalEvents:     service.NewCrud[entity.CalendarEvent](db),
 	}
 }
 

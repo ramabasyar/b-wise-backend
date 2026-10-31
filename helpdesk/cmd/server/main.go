@@ -135,6 +135,10 @@ func main() {
 	if db != nil {
 		ticketSvc := ticketsvc.New(db)
 		ticketSvc.SetResolver(cfg.HC.URL, cfg.SSO.URL, cfg.SSO.ServiceClientID, cfg.SSO.ServiceClientSecret)
+		// Integrasi hari libur Scheduling (opsional via SCHEDULING_URL; SLA menghormati libur)
+		if cfg.Scheduling.URL != "" {
+			ticketSvc.SetHolidayProvider(slasvc.NewHolidayProvider(cfg.Scheduling.URL, cfg.SSO.URL, cfg.SSO.ServiceClientID, cfg.SSO.ServiceClientSecret))
+		}
 		if k := os.Getenv("HELPDESK_SECRET_KEY"); k != "" {
 			ticketSvc.SetSecretKey(k)
 		}

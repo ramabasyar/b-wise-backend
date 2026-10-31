@@ -4,27 +4,27 @@ package ticketstate
 
 // Status tiket.
 const (
-	Baru             = "baru"
-	MenungguApproval = "menunggu_approval"
-	Terbuka          = "terbuka"
-	Dikerjakan       = "dikerjakan"
-	MenungguPemohon  = "menunggu_pemohon"
+	Baru              = "baru"
+	MenungguApproval  = "menunggu_approval"
+	Terbuka           = "terbuka"
+	Dikerjakan        = "dikerjakan"
+	MenungguPemohon   = "menunggu_pemohon"
 	MenungguPihakLain = "menunggu_pihak_lain"
-	Selesai          = "selesai"
-	Ditutup          = "ditutup"
-	Ditolak          = "ditolak"
-	Dibatalkan       = "dibatalkan"
+	Selesai           = "selesai"
+	Ditutup           = "ditutup"
+	Ditolak           = "ditolak"
+	Dibatalkan        = "dibatalkan"
 )
 
 // transitions — peta transisi legal (from -> set of to).
 var transitions = map[string]map[string]bool{
-	Baru: {MenungguApproval: true, Terbuka: true, Dibatalkan: true},
-	MenungguApproval: {Terbuka: true, Ditolak: true, MenungguPemohon: true, Dibatalkan: true},
-	Terbuka:          {Dikerjakan: true, Dibatalkan: true},
-	Dikerjakan:       {MenungguPemohon: true, MenungguPihakLain: true, Selesai: true, Dibatalkan: true},
-	MenungguPemohon:  {Dikerjakan: true, Ditutup: true},
+	Baru:              {MenungguApproval: true, Terbuka: true, Dibatalkan: true},
+	MenungguApproval:  {Terbuka: true, Ditolak: true, MenungguPemohon: true, Dibatalkan: true},
+	Terbuka:           {Dikerjakan: true, Dibatalkan: true},
+	Dikerjakan:        {MenungguPemohon: true, MenungguPihakLain: true, Selesai: true, Dibatalkan: true},
+	MenungguPemohon:   {Dikerjakan: true, Ditutup: true},
 	MenungguPihakLain: {Dikerjakan: true},
-	Selesai:          {Ditutup: true, Dikerjakan: true}, // buka ulang <= 7 hari (§5.3)
+	Selesai:           {Ditutup: true, Dikerjakan: true}, // buka ulang <= 7 hari (§5.3)
 }
 
 // terminal — status akhir; tidak boleh keluar lagi.

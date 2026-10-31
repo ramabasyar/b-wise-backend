@@ -20,7 +20,8 @@ import (
 	"github.com/rama/b-wise/scheduling/internal/adapter/database"
 	"github.com/rama/b-wise/scheduling/internal/adapter/logger"
 	"github.com/rama/b-wise/scheduling/internal/service/permissionsync"
-	"gorm.io/gorm")
+	"gorm.io/gorm"
+)
 
 func main() {
 	// Load configuration (with .env support)
@@ -119,7 +120,7 @@ func main() {
 		solverURL = "http://127.0.0.1:8086"
 	}
 	solveHandler := handler.NewSolveHandler(service.NewSolveService(db, solverclient.NewSolverClient(solverURL)))
-	handlers := &router.Handlers{Master: masterHandler, Importer: importHandler, Solve: solveHandler, SolveConfig: handler.NewSolveConfigHandler(db), TimePolicy: handler.NewTimePolicyHandler(db)}
+	handlers := &router.Handlers{Master: masterHandler, Importer: importHandler, Solve: solveHandler, SolveConfig: handler.NewSolveConfigHandler(db), TimePolicy: handler.NewTimePolicyHandler(db), Calendar: handler.NewCalendarHandler(db)}
 
 	// ===== Setup router =====
 	zapGlobal := zapLogger.SugaredLogger.Desugar()
@@ -189,6 +190,7 @@ func seedCourseTypes(db *gorm.DB, log *logger.Logger) {
 		log.Info(fmt.Sprintf("[startup] seeded %d default course types", len(defaults)))
 	}
 }
+
 // seedFacilityTypes — seed default fasilitas saat tabel kosong (idempotent by code).
 func seedFacilityTypes(db *gorm.DB, log *logger.Logger) {
 	var count int64

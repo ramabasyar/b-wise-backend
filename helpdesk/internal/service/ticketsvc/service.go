@@ -1,6 +1,7 @@
 package ticketsvc
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -20,7 +21,8 @@ type Service struct {
 	ssoURL       string
 	clientID     string
 	clientSecret string
-	secretKey     []byte // kunci induk enkripsi rahasia (env, RH-04)
+	secretKey    []byte                  // kunci induk enkripsi rahasia (env, RH-04)
+	holidays     *slasvc.HolidayProvider // hari libur dari Scheduling (opsional)
 }
 
 func New(db *gorm.DB) *Service { return &Service{db: db, now: time.Now} }
@@ -438,6 +440,9 @@ func (s *Service) TeamMembers(teamID string) ([]entity.TeamMember, error) {
 	return list, err
 }
 
+// SetHolidayProvider - sambungkan sinkron hari libur dari Scheduling (main.go).
+func (s *Service) SetHolidayProvider(p *slasvc.HolidayProvider) { s.holidays = p }
+
 // loadCalendar - kalender bisnis tim (fallback: kalender aktif pertama / default Sen-Jum 08-16).
 func (s *Service) loadCalendar(calendarID string) *slasvc.Calendar {
 	var row entity.BusinessCalendar
@@ -453,6 +458,14 @@ func (s *Service) loadCalendar(calendarID string) *slasvc.Calendar {
 	if cal == nil {
 		iv := []slasvc.Interval{{Start: "08:00", End: "16:00"}}
 		return &slasvc.Calendar{Weekly: map[string][]slasvc.Interval{"mon": iv, "tue": iv, "wed": iv, "thu": iv, "fri": iv}, Timezone: "Asia/Jakarta"}
+	}
+	// integrasi libur: HolidaySource="scheduling" → tarik dari Scheduling (cache 1 jam).
+	if s.holidays != nil && row.HolidaySource == "scheduling" {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if dates, err := s.holidays.Dates(ctx); err == nil && len(dates) > 0 {
+			cal.AttachHolidays(dates)
+		}
 	}
 	return cal
 }

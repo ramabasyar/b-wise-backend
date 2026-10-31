@@ -14,8 +14,8 @@ import (
 
 // Worker - kirim notifikasi email tertunda (kanal in_app tak perlu diproses).
 type Worker struct {
-	db   *gorm.DB
-	log  func(format string, args ...interface{})
+	db  *gorm.DB
+	log func(format string, args ...interface{})
 }
 
 func NewWorker(db *gorm.DB, logFn func(string, ...interface{})) *Worker {

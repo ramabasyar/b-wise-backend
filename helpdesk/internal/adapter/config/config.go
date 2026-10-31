@@ -13,24 +13,30 @@ import (
 
 // Config holds application configuration
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	Redis    RedisConfig
-	JWT      JWTConfig
-	SSO      SSOConfig
-	Logger   LoggerConfig
-	CORS     CORSConfig
-	HC       HCConfig
+	Server     ServerConfig
+	Database   DatabaseConfig
+	Redis      RedisConfig
+	JWT        JWTConfig
+	SSO        SSOConfig
+	Logger     LoggerConfig
+	CORS       CORSConfig
+	HC         HCConfig
+	Scheduling SchedulingConfig
 }
 
 // ServerConfig holds server configuration
 type ServerConfig struct {
-	Port              int64         `mapstructure:"port"`
-	Host              string        `mapstructure:"host"`
-	ReadTimeout       time.Duration `mapstructure:"read_timeout"`
-	WriteTimeout      time.Duration `mapstructure:"write_timeout"`
-	ShutdownTimeout   time.Duration `mapstructure:"shutdown_timeout"`
-	MaxBodySize       int64         `mapstructure:"max_body_size"`
+	Port            int64         `mapstructure:"port"`
+	Host            string        `mapstructure:"host"`
+	ReadTimeout     time.Duration `mapstructure:"read_timeout"`
+	WriteTimeout    time.Duration `mapstructure:"write_timeout"`
+	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"`
+	MaxBodySize     int64         `mapstructure:"max_body_size"`
+}
+
+// SchedulingConfig — integrasi hari libur (helpdesk SLA).
+type SchedulingConfig struct {
+	URL string `mapstructure:"url"`
 }
 
 // DatabaseConfig holds database configuration
@@ -58,21 +64,21 @@ type RedisConfig struct {
 
 // JWTConfig holds JWT configuration
 type JWTConfig struct {
-	Secret          string        `mapstructure:"secret"`
+	Secret           string        `mapstructure:"secret"`
 	AccessExpiration time.Duration `mapstructure:"access_expiration"`
 }
 
 // SSOConfig holds SSO client configuration
 type SSOConfig struct {
-	URL                      string        `mapstructure:"url"`
-	ServiceAccountEmail      string        `mapstructure:"service_account_email"`
-	ServiceAccountPassword   string        `mapstructure:"service_account_password"`
-	CacheEnabled             bool          `mapstructure:"cache_enabled"`
-	CacheTTL                 time.Duration `mapstructure:"cache_ttl"`
-	PermissionServiceURL     string        `mapstructure:"permission_service_url"`
-	ServiceName              string        `mapstructure:"service_name"`
-	ServiceClientID          string        `mapstructure:"service_client_id"`
-	ServiceClientSecret      string        `mapstructure:"service_client_secret"`
+	URL                    string        `mapstructure:"url"`
+	ServiceAccountEmail    string        `mapstructure:"service_account_email"`
+	ServiceAccountPassword string        `mapstructure:"service_account_password"`
+	CacheEnabled           bool          `mapstructure:"cache_enabled"`
+	CacheTTL               time.Duration `mapstructure:"cache_ttl"`
+	PermissionServiceURL   string        `mapstructure:"permission_service_url"`
+	ServiceName            string        `mapstructure:"service_name"`
+	ServiceClientID        string        `mapstructure:"service_client_id"`
+	ServiceClientSecret    string        `mapstructure:"service_client_secret"`
 }
 
 // LoggerConfig holds logger configuration
@@ -224,6 +230,9 @@ func bindEnvVars() {
 	viper.BindEnv("hc.url", "HC_URL")
 	viper.BindEnv("hc.sync_interval", "HC_SYNC_INTERVAL")
 	viper.BindEnv("hc.front_office_code", "HC_FRONT_OFFICE_CODE")
+
+	// Scheduling (hari libur SLA)
+	viper.BindEnv("scheduling.url", "SCHEDULING_URL")
 
 	// Database
 	viper.BindEnv("database.host", "DB_HOST")

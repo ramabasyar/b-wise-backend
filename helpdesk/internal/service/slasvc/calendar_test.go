@@ -8,7 +8,7 @@ import (
 func weekdaysCal() *Calendar {
 	iv := []Interval{{Start: "08:00", End: "16:00"}}
 	return &Calendar{
-		Weekly: map[string][]Interval{"mon": iv, "tue": iv, "wed": iv, "thu": iv, "fri": iv},
+		Weekly:   map[string][]Interval{"mon": iv, "tue": iv, "wed": iv, "thu": iv, "fri": iv},
 		Timezone: "Asia/Jakarta",
 	}
 }

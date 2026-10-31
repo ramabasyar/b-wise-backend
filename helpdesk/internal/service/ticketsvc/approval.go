@@ -116,13 +116,13 @@ func (s *Service) initApprovalFlow(ticketID, flowJSON, requesterID string, t *en
 		case "direct_supervisor":
 			sv, err := s.resolveSupervisor(requesterID)
 			if err == nil && sv != "" {
-							if s.isOnLeave(sv) {
-				if up, e2 := s.resolveSupervisor(sv); e2 == nil && up != "" && up != sv {
-					_ = s.AddSystemEvent(ticketID, "approver sedang cuti - keputusan didelegasikan ke atasan approver (AP-06)", "")
-					sv = up
+				if s.isOnLeave(sv) {
+					if up, e2 := s.resolveSupervisor(sv); e2 == nil && up != "" && up != sv {
+						_ = s.AddSystemEvent(ticketID, "approver sedang cuti - keputusan didelegasikan ke atasan approver (AP-06)", "")
+						sv = up
+					}
 				}
-			}
-			approvers = []string{sv}
+				approvers = []string{sv}
 			} else {
 				_ = s.AddSystemEvent(ticketID, "approver langkah "+fmt.Sprint(st.Step)+" tidak teresolusi (atasan langsung kosong) - menunggu admin", st.Rule)
 			}
