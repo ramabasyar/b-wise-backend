@@ -10,15 +10,19 @@ import (
 
 	"github.com/rama/b-wise/helpdesk/internal/domain/entity"
 	"github.com/rama/b-wise/helpdesk/internal/domain/ticketstate"
-	"gorm.io/gorm"
 )
 
 // FlowStep - satu langkah approval pada konfigurasi layanan (jsonb approval_flow).
-// Rule v1: person (user_id eksplisit) | direct_supervisor (resolusi HC-3).
+// Rule: person (user_id eksplisit) | direct_supervisor (resolusi HC-3) |
+// parallel (users: beberapa approver sekaligus; mode all = semua setuju, any = cukup satu - AP-05).
+// DueMinutes: batas keputusan dalam menit jam layanan (AP-04; default 480).
 type FlowStep struct {
-	Step   int    `json:"step"`
-	Rule   string `json:"rule"`
-	UserID string `json:"user_id,omitempty"`
+	Step       int      `json:"step"`
+	Rule       string   `json:"rule"`
+	UserID     string   `json:"user_id,omitempty"`
+	Users      []string `json:"users,omitempty"`
+	Mode       string   `json:"mode,omitempty"`
+	DueMinutes int      `json:"due_minutes,omitempty"`
 }
 
 // flowHasSteps - true bila flow JSON berisi minimal satu langkah valid.
@@ -63,7 +67,7 @@ func (s *Service) serviceToken() (string, error) {
 	return r.AccessToken, nil
 }
 
-// resolveSupervisor - HC-3: atasan langsung requester sebagai SSO user_id.
+// resolveSupervisor - HC-3: atasan langsung user sebagai SSO user_id.
 func (s *Service) resolveSupervisor(userID string) (string, error) {
 	tok, err := s.serviceToken()
 	if err != nil {
@@ -90,71 +94,112 @@ func (s *Service) resolveSupervisor(userID string) (string, error) {
 
 // initApprovalFlow - buat baris ticket_approvals dari approval_flow layanan.
 // Rule yang gagal teresolusi tetap dibuat (approver kosong) + event catatan.
+// AP-04: tiap baris diberi due_at (kalender jam layanan tim tiket; default 480 menit).
+// AP-05: rule parallel membuat satu baris per approver pada step yang sama.
 func (s *Service) initApprovalFlow(ticketID, flowJSON, requesterID string, t *entity.Ticket) {
 	var steps []FlowStep
 	if err := json.Unmarshal([]byte(flowJSON), &steps); err != nil || len(steps) == 0 {
 		return
 	}
+	cal := s.loadCalendarForTeam(t.TeamID)
 	for _, st := range steps {
-		approver := ""
+		mins := st.DueMinutes
+		if mins <= 0 {
+			mins = 480
+		}
+		due := cal.AddBusinessMinutes(s.now(), mins)
+		approvers := []string{}
+		mode := ""
 		switch st.Rule {
 		case "person":
-			approver = st.UserID
+			approvers = []string{st.UserID}
 		case "direct_supervisor":
 			sv, err := s.resolveSupervisor(requesterID)
 			if err == nil && sv != "" {
-				approver = sv
+				approvers = []string{sv}
 			} else {
 				_ = s.AddSystemEvent(ticketID, "approver langkah "+fmt.Sprint(st.Step)+" tidak teresolusi (atasan langsung kosong) - menunggu admin", st.Rule)
 			}
+		case "parallel":
+			mode = st.Mode
+			if mode == "" {
+				mode = "all"
+			}
+			approvers = st.Users
 		default:
 			_ = s.AddSystemEvent(ticketID, "rule approval tidak dikenal: "+st.Rule, "")
 			continue
 		}
-		row := entity.TicketApproval{
-			Base:       entity.Base{},
-			TicketID:   ticketID,
-			Step:       st.Step,
-			Rule:       st.Rule,
-			ApproverID: approver,
-		}
-		_ = s.db.Create(&row).Error
-		if approver != "" && t != nil {
-			s.notifyInApp(approver, "approval_menunggu", t, "Approval menunggu: "+t.Number, "Tiket '"+t.Subject+"' menunggu keputusan Anda.")
+		for _, ap := range approvers {
+			row := entity.TicketApproval{
+				Base:       entity.Base{},
+				TicketID:   ticketID,
+				Step:       st.Step,
+				Rule:       st.Rule,
+				ApproverID: ap,
+				Mode:       mode,
+			}
+			row.DueAt = &due
+			_ = s.db.Create(&row).Error
+			if ap != "" && t != nil {
+				s.notifyInApp(ap, "approval_menunggu", t, "Approval menunggu: "+t.Number, "Tiket '"+t.Subject+"' menunggu keputusan Anda.")
+			}
 		}
 	}
 }
 
-// pendingApproval - langkah approval aktif terendah tanpa keputusan.
-func (s *Service) pendingApproval(ticketID string) (*entity.TicketApproval, error) {
-	var row entity.TicketApproval
-	err := s.db.Where("ticket_id = ? AND (decision IS NULL OR decision = '')", ticketID).
-		Order("step ASC").First(&row).Error
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, nil
+// activeStepRows - baris langkah AKTIF (step terendah yang belum tuntas menurut mode:
+// any tuntas saat satu keputusan; all tunggu semua; baris kosong = flow selesai) (AP-05).
+func (s *Service) activeStepRows(ticketID string) []entity.TicketApproval {
+	var all []entity.TicketApproval
+	s.db.Where("ticket_id = ?", ticketID).Order("step ASC, created_at ASC").Find(&all)
+	byStep := map[int][]entity.TicketApproval{}
+	var order []int
+	for _, r := range all {
+		if _, ok := byStep[r.Step]; !ok {
+			order = append(order, r.Step)
 		}
-		return nil, err
+		byStep[r.Step] = append(byStep[r.Step], r)
 	}
-	return &row, nil
+	for _, st := range order {
+		rows := byStep[st]
+		undecided := 0
+		decidedAny := false
+		for _, r := range rows {
+			if r.Decision == "" {
+				undecided++
+			} else {
+				decidedAny = true
+			}
+		}
+		if undecided == 0 {
+			continue
+		}
+		if rows[0].Mode == "any" && decidedAny {
+			continue
+		}
+		return rows
+	}
+	return nil
 }
 
 // ApprovalInboxItem - baris kotak approval (AP-03).
 type ApprovalInboxItem struct {
-	ApprovalID string `json:"approval_id"`
-	TicketID   string `json:"ticket_id"`
-	Number     string `json:"number"`
-	Subject    string `json:"subject"`
-	Step       int    `json:"step"`
-	Rule       string `json:"rule"`
-	Status     string `json:"status"`
+	ApprovalID string     `json:"approval_id"`
+	TicketID   string     `json:"ticket_id"`
+	Number     string     `json:"number"`
+	Subject    string     `json:"subject"`
+	Step       int        `json:"step"`
+	Rule       string     `json:"rule"`
+	Status     string     `json:"status"`
+	DueAt      *time.Time `json:"due_at,omitempty"`
 }
 
 // ApprovalInbox - approval menunggu keputusan user (AP-03).
 func (s *Service) ApprovalInbox(userID string) ([]ApprovalInboxItem, error) {
 	var rows []ApprovalInboxItem
 	err := s.db.Table("ticket_approvals ta").
-		Select("ta.id as approval_id, ta.ticket_id, t.number, t.subject, ta.step, ta.rule, t.status").
+		Select("ta.id as approval_id, ta.ticket_id, t.number, t.subject, ta.step, ta.rule, ta.status, ta.due_at").
 		Joins("JOIN tickets t ON t.id = ta.ticket_id").
 		Where("ta.approver_id = ? AND (ta.decision IS NULL OR ta.decision = '')", userID).
 		Where("t.status IN ?", []string{ticketstate.MenungguApproval, ticketstate.MenungguPemohon}).
@@ -164,6 +209,8 @@ func (s *Service) ApprovalInbox(userID string) ([]ApprovalInboxItem, error) {
 }
 
 // Decide - keputusan approver langkah aktif (AP-02): approved | rejected | revision.
+// AP-05: mode any = keputusan pertama menuntaskan langkah; mode all = tunggu semua;
+// rejected/revision selalu mengakhiri langkah (baris lain ditandai skipped).
 func (s *Service) Decide(ticketID, actorID, decision, comment string) (*entity.Ticket, error) {
 	var t entity.Ticket
 	if err := s.db.Where("id = ?", ticketID).First(&t).Error; err != nil {
@@ -172,43 +219,68 @@ func (s *Service) Decide(ticketID, actorID, decision, comment string) (*entity.T
 	if t.Status != ticketstate.MenungguApproval && t.Status != ticketstate.MenungguPemohon {
 		return nil, fmt.Errorf("%w: tiket tidak dalam status approval", ErrValidation)
 	}
-	pend, err := s.pendingApproval(ticketID)
-	if err != nil {
-		return nil, err
-	}
-	if pend == nil {
+	rows := s.activeStepRows(ticketID)
+	if len(rows) == 0 {
 		return nil, fmt.Errorf("%w: tidak ada langkah approval menunggu", ErrValidation)
 	}
-	if pend.ApproverID == "" {
-		return nil, fmt.Errorf("%w: approver belum teresolusi", ErrForbidden)
+	var mine *entity.TicketApproval
+	among := false
+	for i := range rows {
+		if rows[i].ApproverID == actorID {
+			among = true
+			if rows[i].Decision == "" {
+				mine = &rows[i]
+			}
+		}
 	}
-	if pend.ApproverID != actorID {
+	if !among || mine == nil {
 		return nil, ErrForbidden
 	}
 	if decision == "rejected" && comment == "" {
 		return nil, fmt.Errorf("%w: alasan penolakan wajib", ErrValidation)
 	}
 	now := s.now()
-	_ = s.db.Model(pend).Updates(map[string]interface{}{"decision": decision, "comment": comment, "decided_at": now}).Error
+	_ = s.db.Model(mine).Updates(map[string]interface{}{"decision": decision, "comment": comment, "decided_at": now}).Error
 	_ = s.addEvent(ticketID, "approval", "public", actorID, decision, comment)
 	s.notifyInApp(t.RequesterUserID, "keputusan_approval", &t, "Keputusan approval "+t.Number+": "+decision, comment)
 
-	switch decision {
-	case "rejected":
-		_ = s.db.Model(&t).Updates(map[string]interface{}{"status": ticketstate.Ditolak}).Error
-	case "revision":
-		_ = s.db.Model(&t).Updates(map[string]interface{}{"status": ticketstate.MenungguPemohon}).Error
-	case "approved":
-		next, _ := s.pendingApproval(ticketID)
-		if next == nil {
-			if t.Status == ticketstate.MenungguPemohon {
-				_ = s.db.Model(&t).Updates(map[string]interface{}{"status": ticketstate.MenungguApproval}).Error
-				t.Status = ticketstate.MenungguApproval
+	mode := rows[0].Mode
+	stepDone := false
+	outcome := decision
+	if mode == "any" || decision == "rejected" || decision == "revision" {
+		stepDone = true
+		for i := range rows {
+			if rows[i].ID != mine.ID && rows[i].Decision == "" {
+				_ = s.db.Model(&rows[i]).Updates(map[string]interface{}{"decision": "skipped", "decided_at": now}).Error
 			}
-			_ = s.db.Model(&t).Updates(map[string]interface{}{"status": ticketstate.Terbuka}).Error
 		}
-	default:
-		return nil, fmt.Errorf("%w: keputusan tidak dikenal", ErrValidation)
+	} else {
+		pending := 0
+		for i := range rows {
+			if rows[i].ID != mine.ID && rows[i].Decision == "" {
+				pending++
+			}
+		}
+		if pending == 0 {
+			stepDone = true
+		}
+	}
+	if stepDone {
+		switch outcome {
+		case "rejected":
+			_ = s.db.Model(&t).Updates(map[string]interface{}{"status": ticketstate.Ditolak}).Error
+		case "revision":
+			_ = s.db.Model(&t).Updates(map[string]interface{}{"status": ticketstate.MenungguPemohon}).Error
+		case "approved":
+			next := s.activeStepRows(ticketID)
+			if len(next) == 0 {
+				if t.Status == ticketstate.MenungguPemohon {
+					_ = s.db.Model(&t).Updates(map[string]interface{}{"status": ticketstate.MenungguApproval}).Error
+					t.Status = ticketstate.MenungguApproval
+				}
+				_ = s.db.Model(&t).Updates(map[string]interface{}{"status": ticketstate.Terbuka}).Error
+			}
+		}
 	}
 	_ = s.db.Where("id = ?", ticketID).First(&t).Error
 	return &t, nil

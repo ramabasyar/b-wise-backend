@@ -135,6 +135,7 @@ func main() {
 	if db != nil {
 		ticketSvc := ticketsvc.New(db)
 		ticketSvc.SetResolver(cfg.HC.URL, cfg.SSO.URL, cfg.SSO.ServiceClientID, cfg.SSO.ServiceClientSecret)
+		ticketSvc.RunApprovalWatchers(nil, time.Minute)
 		handlers.Ticket = handler.NewTicketHandler(ticketSvc)
 	}
 
