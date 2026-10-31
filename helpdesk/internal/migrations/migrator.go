@@ -1,6 +1,8 @@
 package migrations
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -15,6 +17,17 @@ type Migration struct {
 }
 
 func (Migration) TableName() string { return "migrations" }
+
+func (m *Migration) BeforeCreate(tx *gorm.DB) error {
+	if m.ID == "" {
+		raw := make([]byte, 16)
+		if _, err := rand.Read(raw); err != nil {
+			return err
+		}
+		m.ID = hex.EncodeToString(raw)
+	}
+	return nil
+}
 
 // MigrationFunc is a function that performs a migration
 type MigrationFunc func(db *gorm.DB) error
