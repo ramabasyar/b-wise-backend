@@ -134,8 +134,9 @@ func (s *Service) Create(p CreateParams) (*entity.Ticket, error) {
 		return nil, err
 	}
 	_ = s.AddSystemEvent(t.ID, "tiket dibuat", team.Code)
+	s.notifyInApp(p.RequesterID, "tiket_dibuat", &t, "Tiket "+t.Number+" dibuat", "Permintaan Anda diterima dan masuk antrean "+team.Code+".")
 	if svcApproval != "" {
-		s.initApprovalFlow(t.ID, svcApproval, p.RequesterID)
+		s.initApprovalFlow(t.ID, svcApproval, p.RequesterID, &t)
 	}
 	return &t, nil
 }
@@ -252,6 +253,13 @@ func (s *Service) AddEvent(ticketID, actorID, kind, visibility, body string) (*e
 	if err := s.addEvent(ticketID, kind, visibility, actorID, body, ""); err != nil {
 		return nil, err
 	}
+	if kind == "reply" && visibility == "public" {
+		if actorID == t.RequesterUserID {
+			s.notifyInApp(t.AssigneeID, "balasan_pemohon", &t, "Pemohon membalas "+t.Number, body)
+		} else {
+			s.notifyInApp(t.RequesterUserID, "balasan_petugas", &t, "Balasan baru di "+t.Number, body)
+		}
+	}
 	if kind == "reply" && visibility == "public" && t.FirstResponseAt == nil {
 		now := s.now()
 		if err := s.db.Model(&t).Update("first_response_at", now).Error; err != nil {
@@ -306,6 +314,9 @@ func (s *Service) ChangeStatus(ticketID, actorID, to, note string) (*entity.Tick
 		return nil, err
 	}
 	_ = s.addEvent(ticketID, "status", "public", actorID, to, note)
+	if actorID != t.RequesterUserID {
+		s.notifyInApp(t.RequesterUserID, "status_tiket", &t, "Status "+t.Number+": "+to, "Status tiket Anda kini: "+to)
+	}
 	return &t, nil
 }
 

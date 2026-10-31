@@ -20,6 +20,7 @@ import (
 	"github.com/rama/b-wise/helpdesk/internal/domain/entity"
 	"github.com/rama/b-wise/helpdesk/internal/service/permissionsync"
 	"github.com/rama/b-wise/helpdesk/internal/service/teamsync"
+	"github.com/rama/b-wise/helpdesk/internal/service/notifsvc"
 	"github.com/rama/b-wise/helpdesk/internal/service/slasvc"
 	"github.com/rama/b-wise/helpdesk/internal/service/ticketsvc"
 	"gorm.io/gorm"
@@ -87,6 +88,7 @@ func main() {
 				// Sinkron tim otomatis dari unit HC (D-15, blueprint v1.1)
 				// Pemantau SLA berkala (SL-04; blueprint 9.5: job tiap 1 menit)
 				go slasvc.NewWorker(db, log.Printf).RunInBackground(nil, time.Minute)
+				go notifsvc.NewWorker(db, log.Printf).RunInBackground(nil, 30*time.Second)
 
 				ts := teamsync.New(db, cfg.HC, cfg.SSO, log.Printf)
 				if ts.Enabled() {

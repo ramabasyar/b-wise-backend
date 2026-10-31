@@ -121,6 +121,10 @@ func SetupWithLogger(
 		// Kotak approval + keputusan (self-service; otorisasi via approver).
 		v1.GET("/approvals/inbox", handlers.Ticket.ApprovalsInbox)
 		v1.POST("/approvals/decide", handlers.Ticket.ApprovalDecide)
+
+		// Notifikasi in-app (self-service; PM-07).
+		v1.GET("/notifications", handlers.Ticket.Notifications)
+		v1.POST("/notifications/read", handlers.Ticket.NotificationsRead)
 	}
 	_ = permCheck
 

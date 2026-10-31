@@ -82,7 +82,7 @@ func (s *Service) resolveSupervisor(userID string) (string, error) {
 
 // initApprovalFlow - buat baris ticket_approvals dari approval_flow layanan.
 // Rule yang gagal teresolusi tetap dibuat (approver kosong) + event catatan.
-func (s *Service) initApprovalFlow(ticketID, flowJSON, requesterID string) {
+func (s *Service) initApprovalFlow(ticketID, flowJSON, requesterID string, t *entity.Ticket) {
 	var steps []FlowStep
 	if err := json.Unmarshal([]byte(flowJSON), &steps); err != nil || len(steps) == 0 {
 		return
@@ -111,6 +111,9 @@ func (s *Service) initApprovalFlow(ticketID, flowJSON, requesterID string) {
 			ApproverID: approver,
 		}
 		_ = s.db.Create(&row).Error
+		if approver != "" && t != nil {
+			s.notifyInApp(approver, "approval_menunggu", t, "Approval menunggu: "+t.Number, "Tiket '"+t.Subject+"' menunggu keputusan Anda.")
+		}
 	}
 }
 
@@ -181,6 +184,7 @@ func (s *Service) Decide(ticketID, actorID, decision, comment string) (*entity.T
 	now := s.now()
 	_ = s.db.Model(pend).Updates(map[string]interface{}{"decision": decision, "comment": comment, "decided_at": now}).Error
 	_ = s.addEvent(ticketID, "approval", "public", actorID, decision, comment)
+	s.notifyInApp(t.RequesterUserID, "keputusan_approval", &t, "Keputusan approval "+t.Number+": "+decision, comment)
 
 	switch decision {
 	case "rejected":

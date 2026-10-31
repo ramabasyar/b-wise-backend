@@ -235,6 +235,29 @@ func (h *TicketHandler) Catalog(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"data": list}})
 }
 
+// Notifications - daftar notifikasi in-app user + jumlah belum dibaca (PM-07).
+func (h *TicketHandler) Notifications(c *gin.Context) {
+	list, unread, err := h.svc.Notifications(ctxUserID(c))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"data": list, "unread": unread}})
+}
+
+// NotificationsRead - tandai notifikasi dibaca (ids kosong = semua).
+func (h *TicketHandler) NotificationsRead(c *gin.Context) {
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	if err := h.svc.NotificationsRead(ctxUserID(c), req.IDs); err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
 // Teams - daftar tim aktif (pilihan transfer; semua akun login).
 func (h *TicketHandler) Teams(c *gin.Context) {
 	list, err := h.svc.Teams()
