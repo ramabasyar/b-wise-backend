@@ -218,7 +218,7 @@ func (h *TicketHandler) Queue(c *gin.Context) {
 		return
 	}
 	filter := c.DefaultQuery("filter", "all")
-	list, err := h.svc.Queue(team.ID, filter)
+	list, err := h.svc.Queue(team.ID, filter, uid)
 	if err != nil {
 		fail(c, err)
 		return
@@ -228,6 +228,26 @@ func (h *TicketHandler) Queue(c *gin.Context) {
 // Catalog — katalog layanan untuk semua akun login (PM-01/PM-02).
 func (h *TicketHandler) Catalog(c *gin.Context) {
 	list, err := h.svc.Catalog()
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"data": list}})
+}
+
+// Teams - daftar tim aktif (pilihan transfer; semua akun login).
+func (h *TicketHandler) Teams(c *gin.Context) {
+	list, err := h.svc.Teams()
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"data": list}})
+}
+
+// TeamMembers - anggota aktif tim (pilihan penugasan; petugas).
+func (h *TicketHandler) TeamMembers(c *gin.Context) {
+	list, err := h.svc.TeamMembers(c.Param("id"))
 	if err != nil {
 		fail(c, err)
 		return

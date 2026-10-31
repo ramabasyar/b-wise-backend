@@ -113,6 +113,10 @@ func SetupWithLogger(
 
 		// Katalog layanan — semua akun login (PM-01/PM-02, tanpa CheckAccess).
 		v1.GET("/catalog", handlers.Ticket.Catalog)
+
+		// Petugas: daftar tim (transfer) & anggota (penugasan).
+		v1.GET("/teams", handlers.Ticket.Teams)
+		v1.GET("/teams/:id/members", handlers.Ticket.TeamMembers)
 	}
 	_ = permCheck
 

@@ -175,13 +175,18 @@ func (s *Service) ListMine(userID string) ([]entity.Ticket, error) {
 }
 
 // Queue — antrean tim petugas (AG-01).
-func (s *Service) Queue(teamID, filter string) ([]entity.Ticket, error) {
+func (s *Service) Queue(teamID, filter, userID string) ([]entity.Ticket, error) {
 	q := s.db.Where("team_id = ?", teamID)
 	switch filter {
 	case "unassigned":
 		q = q.Where("assignee_id IS NULL OR assignee_id = ''")
+	case "mine":
+		q = q.Where("assignee_id = ?", userID)
 	case "open":
 		q = q.Where("status IN ?", []string{ticketstate.Baru, ticketstate.Terbuka, ticketstate.MenungguApproval})
+	
+	case "waiting":
+		q = q.Where("status IN ?", []string{ticketstate.MenungguPemohon, ticketstate.MenungguPihakLain})
 	}
 	var list []entity.Ticket
 	err := q.Order("created_at ASC").Find(&list).Error
@@ -317,4 +322,18 @@ func (s *Service) Transfer(ticketID, actorID, toTeamID, reason string) (*entity.
 	}
 	_ = s.addEvent(ticketID, "transfer", "public", actorID, toTeam.Code, reason)
 	return &t, nil
+}
+
+// Teams - daftar tim aktif (untuk pilihan transfer).
+func (s *Service) Teams() ([]entity.Team, error) {
+	var list []entity.Team
+	err := s.db.Where("is_active = ?", true).Order("code ASC").Find(&list).Error
+	return list, err
+}
+
+// TeamMembers - anggota aktif sebuah tim (untuk pilihan penugasan).
+func (s *Service) TeamMembers(teamID string) ([]entity.TeamMember, error) {
+	var list []entity.TeamMember
+	err := s.db.Where("team_id = ? AND is_active = ?", teamID, true).Find(&list).Error
+	return list, err
 }
