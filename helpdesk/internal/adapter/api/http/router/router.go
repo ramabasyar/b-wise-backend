@@ -153,6 +153,17 @@ func SetupWithLogger(
 			kb.PUT("/:id", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBUpdate)
 			kb.POST("/:id/feedback", handlers.Ticket.KBFeedback)
 		}
+
+		// Formulir layanan (KT-05/KT-06): terbit = semua akun; kelola = catalog.manage.
+		v1.GET("/services/:id/form", handlers.Ticket.FormGet)
+		v1.GET("/services/:id/form/draft", permCheck.RequirePermission("helpdesk.catalog.manage"), handlers.Ticket.FormDraftGet)
+		v1.PUT("/services/:id/form", permCheck.RequirePermission("helpdesk.catalog.manage"), handlers.Ticket.FormSave)
+		v1.POST("/services/:id/form/publish", permCheck.RequirePermission("helpdesk.catalog.manage"), handlers.Ticket.FormPublish)
+
+		// Sub-tugas lintas unit (AG-09/SL-06): baca = viewer tiket; kerja = tickets.work.
+		v1.GET("/tickets/:id/tasks", handlers.Ticket.TasksGet)
+		v1.POST("/tickets/:id/tasks", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.TaskAdd)
+		v1.POST("/tickets/:id/tasks/:taskId/done", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.TaskDone)
 	}
 	_ = permCheck
 

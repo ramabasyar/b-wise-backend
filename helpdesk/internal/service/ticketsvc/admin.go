@@ -70,14 +70,14 @@ func (s *Service) UpdateService(userID, id string, fields map[string]interface{}
 	if err := s.db.Where("id = ? AND team_id = ?", id, team.ID).First(&svc).Error; err != nil {
 		return nil, ErrNotFound
 	}
-	allowed := map[string]bool{"name": true, "description": true, "requirements": true, "procedure": true, "fee_note": true, "output_note": true, "ticket_type": true, "status": true, "sla_policy_id": true, "approval_flow": true, "category_id": true, "confidentiality": true}
+	allowed := map[string]bool{"name": true, "description": true, "requirements": true, "procedure": true, "fee_note": true, "output_note": true, "ticket_type": true, "status": true, "sla_policy_id": true, "approval_flow": true, "task_template": true, "category_id": true, "confidentiality": true}
 	upd := map[string]interface{}{}
 	for k, v := range fields {
 		if allowed[k] {
 			upd[k] = v
 		}
 	}
-	for _, k := range []string{"approval_flow"} {
+	for _, k := range []string{"approval_flow", "task_template"} {
 		if v, ok := upd[k].(string); ok {
 			upd[k] = jsonbOr(v)
 		}

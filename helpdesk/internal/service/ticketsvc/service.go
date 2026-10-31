@@ -76,6 +76,8 @@ func (s *Service) Create(p CreateParams) (*entity.Ticket, error) {
 	var svcConf string
 	var svcSLA string
 	var svcApproval string
+	var svcTasks string
+	var svcFormID string
 	if p.ServiceID != "" {
 		var svc entity.Service
 		if err := s.db.Where("id = ? AND status = ?", p.ServiceID, "published").First(&svc).Error; err != nil {
@@ -84,6 +86,13 @@ func (s *Service) Create(p CreateParams) (*entity.Ticket, error) {
 		svcConf = svc.Confidentiality
 		svcSLA = svc.SLAPolicyID
 		svcApproval = svc.ApprovalFlow
+		svcTasks = svc.TaskTemplate
+		if pub := s.FormPublished(p.ServiceID); pub != nil {
+			if err := validateAnswers(pub.Schema, p.Answers); err != nil {
+				return nil, err
+			}
+			svcFormID = pub.ID
+		}
 		if err := s.db.Where("id = ? AND is_active = ?", svc.TeamID, true).First(&team).Error; err != nil {
 			return nil, fmt.Errorf("%w: tim layanan tidak aktif", ErrNotFound)
 		}
@@ -118,6 +127,7 @@ func (s *Service) Create(p CreateParams) (*entity.Ticket, error) {
 		Channel:         p.Channel,
 		Subject:         p.Subject,
 		Answers:         jsonbOr(p.Answers),
+		FormVersionID:   svcFormID,
 		Status:          status,
 		Confidentiality: conf,
 	}
@@ -134,6 +144,9 @@ func (s *Service) Create(p CreateParams) (*entity.Ticket, error) {
 		return nil, err
 	}
 	_ = s.AddSystemEvent(t.ID, "tiket dibuat", team.Code)
+	if svcTasks != "" && svcTasks != "{}" {
+		s.initTasksFromTemplate(t.ID, svcTasks)
+	}
 	s.notifyInApp(p.RequesterID, "tiket_dibuat", &t, "Tiket "+t.Number+" dibuat", "Permintaan Anda diterima dan masuk antrean "+team.Code+".")
 	if flowHasSteps(svcApproval) {
 		s.initApprovalFlow(t.ID, svcApproval, p.RequesterID, &t)
@@ -280,6 +293,11 @@ func (s *Service) ChangeStatus(ticketID, actorID, to, note string) (*entity.Tick
 	if t.ResolvedAt != nil {
 		resolvedAt = *t.ResolvedAt
 	}
+	if to == ticketstate.Selesai {
+		if open := s.OpenTaskCount(ticketID); open > 0 {
+			return nil, fmt.Errorf("%w: masih ada %d sub-tugas lintas unit yang belum selesai", ErrValidation, open)
+		}
+	}
 	if err := ValidateTransition(t.Status, to, resolvedAt, now); err != nil {
 		return nil, err
 	}
@@ -390,6 +408,17 @@ func (s *Service) Teams() ([]entity.Team, error) {
 	var list []entity.Team
 	err := s.db.Where("is_active = ?", true).Order("code ASC").Find(&list).Error
 	return list, err
+}
+
+// TeamsMap - peta id -> tim aktif (pengayaan respons sub-tugas).
+func (s *Service) TeamsMap() map[string]entity.Team {
+	var list []entity.Team
+	s.db.Where("is_active = ?", true).Find(&list)
+	m := make(map[string]entity.Team, len(list))
+	for _, t := range list {
+		m[t.ID] = t
+	}
+	return m
 }
 
 // TeamMembers - anggota aktif sebuah tim (untuk pilihan penugasan).
