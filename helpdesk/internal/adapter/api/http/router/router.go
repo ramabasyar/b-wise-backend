@@ -177,6 +177,18 @@ func SetupWithLogger(
 		v1.POST("/tickets/:id/stage", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.SetStage)
 		v1.GET("/tickets/:id/access-logs", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.AccessLogs)
 		v1.GET("/reports/secret-aggregate", permCheck.RequirePermission("helpdesk.reports.read"), handlers.Ticket.SecretAggregate)
+
+		// Otomatisasi tim & insiden massal (KT-10/AG-12).
+		v1.GET("/automation-rules", permCheck.RequirePermission("helpdesk.teams.manage"), handlers.Ticket.AutomationRules)
+		v1.POST("/automation-rules", permCheck.RequirePermission("helpdesk.teams.manage"), handlers.Ticket.AutomationRuleSave)
+		v1.DELETE("/automation-rules/:id", permCheck.RequirePermission("helpdesk.teams.manage"), handlers.Ticket.AutomationRuleDelete)
+		v1.POST("/tickets/:id/make-incident", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.MakeIncidentH)
+		v1.GET("/tickets/:id/children", handlers.Ticket.IncidentChildrenH)
+		v1.POST("/tickets/:id/children", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.AttachChildH)
+
+		// API internal service-to-service (KN-08): token service, TANPA RequireUser.
+		internalGrp := r.Group("/api/v1/internal")
+		internalGrp.POST("/tickets", handlers.Ticket.InternalCreate)
 	}
 	_ = permCheck
 

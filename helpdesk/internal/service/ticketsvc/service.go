@@ -150,6 +150,7 @@ func (s *Service) Create(p CreateParams) (*entity.Ticket, error) {
 	if svcTasks != "" && svcTasks != "{}" {
 		s.initTasksFromTemplate(t.ID, svcTasks)
 	}
+	s.applyAutomation("tiket_dibuat", &t, p.RequesterID)
 	s.notifyInApp(p.RequesterID, "tiket_dibuat", &t, "Tiket "+t.Number+" dibuat", "Permintaan Anda diterima dan masuk antrean "+team.Code+".")
 	if flowHasSteps(svcApproval) {
 		s.initApprovalFlow(t.ID, svcApproval, p.RequesterID, &t)
@@ -334,6 +335,12 @@ func (s *Service) ChangeStatus(ticketID, actorID, to, note string) (*entity.Tick
 		return nil, err
 	}
 	_ = s.addEvent(ticketID, "status", "public", actorID, to, note)
+	if to == ticketstate.Selesai {
+		s.applyAutomation("tiket_selesai", &t, actorID)
+	}
+	if to == ticketstate.Selesai || to == ticketstate.Ditutup {
+		s.cascadeCloseChildren(&t, actorID)
+	}
 	if actorID != t.RequesterUserID {
 		s.notifyInApp(t.RequesterUserID, "status_tiket", &t, "Status "+t.Number+": "+to, "Status tiket Anda kini: "+to)
 	}

@@ -483,6 +483,23 @@ func (h *EmployeeHandler) ResolveRole(c *gin.Context) {
 
 // DirectSupervisor GET /api/org/direct-supervisor?user_id= — HC-3 (helpdesk):
 // atasan langsung (employees.reports_to) sebagai SSO user_id.
+// OnLeave - AP-06: apakah user sedang cuti disetujui hari ini (helpdesk delegasi approval).
+func (h *EmployeeHandler) OnLeave(c *gin.Context) {
+	userID := c.Query("user_id")
+	if userID == "" || h.db == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "user_id wajib"}})
+		return
+	}
+	var emp entity.Employee
+	if err := h.db.Select("id").Where("user_id = ?", userID).First(&emp).Error; err != nil {
+		response.Success(c, gin.H{"on_leave": false, "reason": "no_employee"})
+		return
+	}
+	var n int64
+	h.db.Table("leave_requests").Where("employee_id = ? AND status = ? AND start_date <= CURRENT_DATE AND end_date >= CURRENT_DATE", emp.ID, "approved").Count(&n)
+	response.Success(c, gin.H{"on_leave": n > 0})
+}
+
 func (h *EmployeeHandler) DirectSupervisor(c *gin.Context) {
 	userID := c.Query("user_id")
 	if userID == "" || h.db == nil {

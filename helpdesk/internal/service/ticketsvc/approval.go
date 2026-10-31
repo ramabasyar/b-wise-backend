@@ -116,7 +116,13 @@ func (s *Service) initApprovalFlow(ticketID, flowJSON, requesterID string, t *en
 		case "direct_supervisor":
 			sv, err := s.resolveSupervisor(requesterID)
 			if err == nil && sv != "" {
-				approvers = []string{sv}
+							if s.isOnLeave(sv) {
+				if up, e2 := s.resolveSupervisor(sv); e2 == nil && up != "" && up != sv {
+					_ = s.AddSystemEvent(ticketID, "approver sedang cuti - keputusan didelegasikan ke atasan approver (AP-06)", "")
+					sv = up
+				}
+			}
+			approvers = []string{sv}
 			} else {
 				_ = s.AddSystemEvent(ticketID, "approver langkah "+fmt.Sprint(st.Step)+" tidak teresolusi (atasan langsung kosong) - menunggu admin", st.Rule)
 			}
@@ -284,4 +290,29 @@ func (s *Service) Decide(ticketID, actorID, decision, comment string) (*entity.T
 	}
 	_ = s.db.Where("id = ?", ticketID).First(&t).Error
 	return &t, nil
+}
+
+// isOnLeave - AP-06: user sedang cuti disetujui hari ini? (via HC org/on-leave).
+func (s *Service) isOnLeave(userID string) bool {
+	tok, err := s.serviceToken()
+	if err != nil {
+		return false
+	}
+	req, _ := http.NewRequest(http.MethodGet, s.hcURL+"/api/org/on-leave?user_id="+userID, nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var env struct {
+		Data struct {
+			OnLeave bool `json:"on_leave"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(body, &env) != nil {
+		return false
+	}
+	return env.Data.OnLeave
 }
