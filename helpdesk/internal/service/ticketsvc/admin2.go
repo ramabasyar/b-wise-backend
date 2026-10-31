@@ -118,7 +118,11 @@ func (s *Service) ExportCSV(userID string, from, to time.Time) ([]string, error)
 				sla = "tidak"
 			}
 		}
-		fields := []string{t.Number, csvField(t.Subject), t.Status, t.Priority, t.Channel,
+		subjek := t.Subject
+		if t.Confidentiality == "rahasia" {
+			subjek = "[rahasia]"
+		}
+		fields := []string{t.Number, csvField(subjek), t.Status, t.Priority, t.Channel,
 			t.CreatedAt.Format("2006-01-02 15:04"), timeStr(t.FirstResponseAt), timeStr(t.ResolvedAt), timeStr(t.DueResolutionAt), sla}
 		rows = append(rows, strings.Join(fields, CM))
 	}

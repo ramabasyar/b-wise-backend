@@ -170,6 +170,13 @@ func SetupWithLogger(
 		v1.GET("/reports/services-performance", permCheck.RequirePermission("helpdesk.reports.read"), handlers.Ticket.ReportServicesPerformance)
 		v1.GET("/reports/rooms", permCheck.RequirePermission("helpdesk.reports.read"), handlers.Ticket.ReportRooms)
 		v1.GET("/reports/overview", permCheck.RequirePermission("helpdesk.reports.read"), handlers.Ticket.ReportOverview)
+
+		// Kanal rahasia & PPKPT (RH-02..08, blueprint 6.3).
+		v1.POST("/secret/reports", handlers.Ticket.SecretReport)
+		v1.GET("/secret/track/:code", handlers.Ticket.SecretTrack)
+		v1.POST("/tickets/:id/stage", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.SetStage)
+		v1.GET("/tickets/:id/access-logs", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.AccessLogs)
+		v1.GET("/reports/secret-aggregate", permCheck.RequirePermission("helpdesk.reports.read"), handlers.Ticket.SecretAggregate)
 	}
 	_ = permCheck
 

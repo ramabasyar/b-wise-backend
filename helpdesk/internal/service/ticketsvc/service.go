@@ -20,6 +20,7 @@ type Service struct {
 	ssoURL       string
 	clientID     string
 	clientSecret string
+	secretKey     []byte // kunci induk enkripsi rahasia (env, RH-04)
 }
 
 func New(db *gorm.DB) *Service { return &Service{db: db, now: time.Now} }

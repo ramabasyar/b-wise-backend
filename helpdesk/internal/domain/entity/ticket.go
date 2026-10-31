@@ -19,12 +19,15 @@ type Ticket struct {
 	Priority          string     `json:"priority" gorm:"type:varchar(20);default:'normal'"`
 	Status            string     `json:"status" gorm:"type:varchar(30);default:'baru';index"`
 	Confidentiality   string     `json:"confidentiality" gorm:"type:varchar(20);default:'normal'"`
+	Flow              string     `json:"flow,omitempty" gorm:"type:varchar(20)"`
+	TrackCodeHash     string     `json:"-" gorm:"type:varchar(64);index"`
 	RoomRef           string     `json:"room_ref,omitempty" gorm:"type:varchar(100)"`
 	NIM               string     `json:"nim,omitempty" gorm:"type:varchar(30)"`
 	RequesterUnitID   string     `json:"requester_unit_id,omitempty" gorm:"type:varchar(36)"`
 	ParentID          string     `json:"parent_id,omitempty" gorm:"type:varchar(36);index"`
 	FirstResponseAt   *time.Time `json:"first_response_at,omitempty" gorm:"type:timestamptz"`
 	RemindedPemohonAt *time.Time `json:"reminded_pemohon_at,omitempty" gorm:"type:timestamptz"`
+	PenangananStage   string     `json:"penanganan_stage,omitempty" gorm:"type:varchar(30)"`
 	ResolvedAt        *time.Time `json:"resolved_at,omitempty" gorm:"type:timestamptz"`
 	ClosedAt          *time.Time `json:"closed_at,omitempty" gorm:"type:timestamptz"`
 	DueResponseAt     *time.Time `json:"due_response_at,omitempty" gorm:"type:timestamptz;index"`

@@ -80,7 +80,7 @@ func main() {
 				&entity.SLAPolicy{}, &entity.BusinessCalendar{},
 				&entity.Ticket{}, &entity.TicketEvent{}, &entity.TicketAttachment{},
 				&entity.TicketApproval{}, &entity.CannedResponse{}, &entity.CSATResponse{}, &entity.NotificationOutbox{},
-				&entity.TicketSequence{}, &entity.KBArticle{}, &entity.KBArticleFeedback{}, &entity.TicketTask{},
+				&entity.TicketSequence{}, &entity.KBArticle{}, &entity.KBArticleFeedback{}, &entity.TicketTask{}, &entity.TicketAccessLog{},
 			); err != nil {
 				zapLogger.Info(fmt.Sprintf("[startup] auto-migrate error: %v", err))
 			} else {
@@ -135,6 +135,9 @@ func main() {
 	if db != nil {
 		ticketSvc := ticketsvc.New(db)
 		ticketSvc.SetResolver(cfg.HC.URL, cfg.SSO.URL, cfg.SSO.ServiceClientID, cfg.SSO.ServiceClientSecret)
+		if k := os.Getenv("HELPDESK_SECRET_KEY"); k != "" {
+			ticketSvc.SetSecretKey(k)
+		}
 		ticketSvc.RunApprovalWatchers(nil, time.Minute)
 		handlers.Ticket = handler.NewTicketHandler(ticketSvc)
 	}

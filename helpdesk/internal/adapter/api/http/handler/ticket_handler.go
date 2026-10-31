@@ -105,6 +105,21 @@ func (h *TicketHandler) Detail(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	if t.Confidentiality == "rahasia" {
+		if member {
+			t.Subject = h.svc.OpenSecret(t.ID, t.Subject)
+			h.svc.LogSecretUser(t.ID, uid, "view")
+			for i := range events {
+				events[i].Body = h.svc.OpenSecret(t.ID, events[i].Body)
+			}
+		} else {
+			t.Subject = "[Rahasia - isi hanya dibaca tim penanganan]"
+			for i := range events {
+				events[i].Body = "[Rahasia]"
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"ticket": t, "events": events, "is_team_member": member}})
 }
 

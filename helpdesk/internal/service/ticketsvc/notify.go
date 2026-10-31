@@ -9,6 +9,10 @@ import (
 // notifyInApp - tulis notifikasi in-app ke outbox (PM-07; blueprint 9.6).
 // Status langsung sent: in-app siap tampil; kanal email diproses worker notifsvc.
 func (s *Service) notifyInApp(recipient, template string, t *entity.Ticket, title, body string) {
+	if t != nil && t.Confidentiality == "rahasia" {
+		title = "Pembaruan laporan rahasia"
+		body = "Ada pembaruan pada laporan Anda. Detail hanya dapat dilihat melalui prosedur Satgas."
+	}
 	if recipient == "" || t == nil {
 		return
 	}
