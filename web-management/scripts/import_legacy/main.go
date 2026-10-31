@@ -34,6 +34,7 @@ func main() {
 	runImport(db, *src)
 	importWaveA(db, *src)
 	importWaveB(db, *src)
+	importWaveC(db, *src)
 	fmt.Println("\n=== PARITY PASCA-IMPORT ===")
 	os.Exit(runCheck(db, *src))
 }
