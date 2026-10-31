@@ -14,6 +14,7 @@ type Team struct {
 	OrgType        string    `json:"org_type,omitempty" gorm:"type:varchar(30)"`
 	IsFrontOffice  bool      `json:"is_front_office" gorm:"default:false"`
 	EmailAlias     string    `json:"email_alias,omitempty" gorm:"type:varchar(255)"`
+	CalendarID     string    `json:"calendar_id,omitempty" gorm:"type:varchar(36)"` // jam layanan tim (SL-02)
 	IsActive       bool      `json:"is_active" gorm:"default:true;index"`
 	SyncedAt       time.Time `json:"synced_at"`
 }

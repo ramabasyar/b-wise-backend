@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"time"
 	"syscall"
 
 	"github.com/gin-gonic/gin"
@@ -19,6 +20,7 @@ import (
 	"github.com/rama/b-wise/helpdesk/internal/domain/entity"
 	"github.com/rama/b-wise/helpdesk/internal/service/permissionsync"
 	"github.com/rama/b-wise/helpdesk/internal/service/teamsync"
+	"github.com/rama/b-wise/helpdesk/internal/service/slasvc"
 	"github.com/rama/b-wise/helpdesk/internal/service/ticketsvc"
 	"gorm.io/gorm"
 )
@@ -83,6 +85,9 @@ func main() {
 				zapLogger.Info("[startup] auto-migrate teams ok")
 
 				// Sinkron tim otomatis dari unit HC (D-15, blueprint v1.1)
+				// Pemantau SLA berkala (SL-04; blueprint 9.5: job tiap 1 menit)
+				go slasvc.NewWorker(db, log.Printf).RunInBackground(nil, time.Minute)
+
 				ts := teamsync.New(db, cfg.HC, cfg.SSO, log.Printf)
 				if ts.Enabled() {
 					go ts.RunInBackground(nil, cfg.HC.SyncInterval)

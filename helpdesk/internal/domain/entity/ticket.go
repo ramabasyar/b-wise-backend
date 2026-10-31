@@ -28,6 +28,10 @@ type Ticket struct {
 	ClosedAt         *time.Time `json:"closed_at,omitempty" gorm:"type:timestamptz"`
 	DueResponseAt    *time.Time `json:"due_response_at,omitempty" gorm:"type:timestamptz;index"`
 	DueResolutionAt  *time.Time `json:"due_resolution_at,omitempty" gorm:"type:timestamptz;index"`
+	PausedAt       *time.Time `json:"paused_at,omitempty" gorm:"type:timestamptz"` // SL-03
+	SLAWarnedAt    *time.Time `json:"sla_warned_at,omitempty" gorm:"type:timestamptz"`
+	SLABreachedAt  *time.Time `json:"sla_breached_at,omitempty" gorm:"type:timestamptz"`
+	SLAEscalatedAt *time.Time `json:"sla_escalated_at,omitempty" gorm:"type:timestamptz"`
 }
 
 func (Ticket) TableName() string { return "tickets" }

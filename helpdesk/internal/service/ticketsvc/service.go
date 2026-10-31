@@ -7,6 +7,7 @@ import (
 
 	"github.com/rama/b-wise/helpdesk/internal/domain/entity"
 	"github.com/rama/b-wise/helpdesk/internal/domain/ticketstate"
+	"github.com/rama/b-wise/helpdesk/internal/service/slasvc"
 	"gorm.io/gorm"
 )
 
@@ -73,6 +74,7 @@ func (s *Service) Create(p CreateParams) (*entity.Ticket, error) {
 
 	var team entity.Team
 	var svcConf string
+	var svcSLA string
 	var svcApproval string
 	if p.ServiceID != "" {
 		var svc entity.Service
@@ -80,6 +82,7 @@ func (s *Service) Create(p CreateParams) (*entity.Ticket, error) {
 			return nil, fmt.Errorf("%w: layanan tidak tersedia", ErrNotFound)
 		}
 		svcConf = svc.Confidentiality
+		svcSLA = svc.SLAPolicyID
 		svcApproval = svc.ApprovalFlow
 		if err := s.db.Where("id = ? AND is_active = ?", svc.TeamID, true).First(&team).Error; err != nil {
 			return nil, fmt.Errorf("%w: tim layanan tidak aktif", ErrNotFound)
@@ -117,6 +120,15 @@ func (s *Service) Create(p CreateParams) (*entity.Ticket, error) {
 		Answers:         jsonbOr(p.Answers),
 		Status:          status,
 		Confidentiality: conf,
+	}
+	if svcSLA != "" {
+		var pol entity.SLAPolicy
+		if err := s.db.Where("id = ?", svcSLA).First(&pol).Error; err == nil {
+			cal := s.loadCalendar(team.CalendarID)
+			targets, _ := slasvc.ParseTargets(pol.Targets)
+			dr, ds := slasvc.DueDates(cal, targets, "normal", s.now())
+			t.DueResponseAt, t.DueResolutionAt = dr, ds
+		}
 	}
 	if err := s.db.Create(&t).Error; err != nil {
 		return nil, err
@@ -275,6 +287,21 @@ func (s *Service) ChangeStatus(ticketID, actorID, to, note string) (*entity.Tick
 			updates["resolved_at"] = nil
 		}
 	}
+	if ticketstate.PausesSLA(to) {
+		updates["paused_at"] = now
+	} else if ticketstate.PausesSLA(t.Status) && t.PausedAt != nil {
+		updates["paused_at"] = nil
+		cal := s.loadCalendarForTeam(t.TeamID)
+		mins := cal.BusinessMinutesBetween(*t.PausedAt, now)
+		if mins > 0 {
+			if t.DueResponseAt != nil {
+				updates["due_response_at"] = cal.AddBusinessMinutes(*t.DueResponseAt, mins)
+			}
+			if t.DueResolutionAt != nil {
+				updates["due_resolution_at"] = cal.AddBusinessMinutes(*t.DueResolutionAt, mins)
+			}
+		}
+	}
 	if err := s.db.Model(&t).Updates(updates).Error; err != nil {
 		return nil, err
 	}
@@ -351,4 +378,31 @@ func (s *Service) TeamMembers(teamID string) ([]entity.TeamMember, error) {
 	var list []entity.TeamMember
 	err := s.db.Where("team_id = ? AND is_active = ?", teamID, true).Find(&list).Error
 	return list, err
+}
+
+// loadCalendar - kalender bisnis tim (fallback: kalender aktif pertama / default Sen-Jum 08-16).
+func (s *Service) loadCalendar(calendarID string) *slasvc.Calendar {
+	var row entity.BusinessCalendar
+	q := s.db.Where("is_active = ?", true)
+	if calendarID != "" {
+		q = s.db.Where("id = ? AND is_active = ?", calendarID, true)
+	}
+	if err := q.First(&row).Error; err != nil {
+		iv := []slasvc.Interval{{Start: "08:00", End: "16:00"}}
+		return &slasvc.Calendar{Weekly: map[string][]slasvc.Interval{"mon": iv, "tue": iv, "wed": iv, "thu": iv, "fri": iv}, Timezone: "Asia/Jakarta"}
+	}
+	cal, _ := slasvc.ParseCalendar(row.WeeklyHours, row.Timezone)
+	if cal == nil {
+		iv := []slasvc.Interval{{Start: "08:00", End: "16:00"}}
+		return &slasvc.Calendar{Weekly: map[string][]slasvc.Interval{"mon": iv, "tue": iv, "wed": iv, "thu": iv, "fri": iv}, Timezone: "Asia/Jakarta"}
+	}
+	return cal
+}
+
+func (s *Service) loadCalendarForTeam(teamID string) *slasvc.Calendar {
+	var tm entity.Team
+	if err := s.db.Where("id = ?", teamID).First(&tm).Error; err == nil {
+		return s.loadCalendar(tm.CalendarID)
+	}
+	return s.loadCalendar("")
 }
