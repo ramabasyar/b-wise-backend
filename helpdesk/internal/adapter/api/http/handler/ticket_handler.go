@@ -59,6 +59,7 @@ func (h *TicketHandler) Create(c *gin.Context) {
 		Subject   string `json:"subject" binding:"required"`
 		Answers   string `json:"answers"`
 		Channel   string `json:"channel"`
+		RoomRef   string `json:"room_ref"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, err)
@@ -70,6 +71,7 @@ func (h *TicketHandler) Create(c *gin.Context) {
 		Subject:     req.Subject,
 		Answers:     req.Answers,
 		Channel:     req.Channel,
+		RoomRef:     req.RoomRef,
 	})
 	if err != nil {
 		fail(c, err)

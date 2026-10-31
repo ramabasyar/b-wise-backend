@@ -40,6 +40,7 @@ type CreateParams struct {
 	Answers     string // jsonb snapshot
 	Channel     string
 	OnBehalfBy  string
+	RoomRef     string // PM-11: ruang dari QR
 }
 
 var (
@@ -124,6 +125,7 @@ func (s *Service) Create(p CreateParams) (*entity.Ticket, error) {
 		TeamID:          team.ID,
 		RequesterUserID: p.RequesterID,
 		OnBehalfBy:      p.OnBehalfBy,
+		RoomRef:         p.RoomRef,
 		Channel:         p.Channel,
 		Subject:         p.Subject,
 		Answers:         jsonbOr(p.Answers),
