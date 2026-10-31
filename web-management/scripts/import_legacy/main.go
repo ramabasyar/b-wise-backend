@@ -32,6 +32,7 @@ func main() {
 		os.Exit(runCheck(db, *src))
 	}
 	runImport(db, *src)
+	importWaveA(db, *src)
 	fmt.Println("\n=== PARITY PASCA-IMPORT ===")
 	os.Exit(runCheck(db, *src))
 }
@@ -390,7 +391,7 @@ func runCheck(db *gorm.DB, src string) int {
 	en := readJSON(src + "/KabarKampus.en.json")
 
 	var posts []entity.Post
-	db.Find(&posts, "source = ?", "import")
+	db.Find(&posts, "source = ? AND type = ?", "import", "news")
 	bySlug := map[string]entity.Post{}
 	for _, p := range posts {
 		bySlug[p.Slug] = p
