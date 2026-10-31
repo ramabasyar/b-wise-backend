@@ -43,7 +43,13 @@ func errStatus(err error) int {
 }
 
 func fail(c *gin.Context, err error) {
-	c.JSON(errStatus(err), gin.H{"success": false, "error": gin.H{"message": err.Error()}})
+	status := errStatus(err)
+	message := err.Error()
+	if status == http.StatusInternalServerError {
+		_ = c.Error(err)
+		message = "terjadi kesalahan internal"
+	}
+	c.JSON(status, gin.H{"success": false, "error": gin.H{"message": message}})
 }
 
 // Create — pemohon membuat tiket (PM-04/PM-06; tanpa CheckAccess, pola self-service).
@@ -228,6 +234,7 @@ func (h *TicketHandler) Queue(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"team": team.Code, "tickets": list}})
 }
+
 // Catalog — katalog layanan untuk semua akun login (PM-01/PM-02).
 func (h *TicketHandler) Catalog(c *gin.Context) {
 	list, err := h.svc.Catalog()

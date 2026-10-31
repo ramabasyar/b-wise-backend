@@ -85,6 +85,7 @@ func SetupWithLogger(
 	// API routes (protected by JWKS auth)
 
 	api := r.Group("/api")
+	api.Use(jwksAuth.RequireUser())
 
 	// Permission middleware - selaras Permission Service Tahap 1-3.
 	permCheck := middleware.NewPermissionCheck(permissionURL, serviceName).
@@ -115,8 +116,8 @@ func SetupWithLogger(
 		v1.GET("/catalog", handlers.Ticket.Catalog)
 
 		// Petugas: daftar tim (transfer) & anggota (penugasan).
-		v1.GET("/teams", handlers.Ticket.Teams)
-		v1.GET("/teams/:id/members", handlers.Ticket.TeamMembers)
+		v1.GET("/teams", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.Teams)
+		v1.GET("/teams/:id/members", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.TeamMembers)
 
 		// Kotak approval + keputusan (self-service; otorisasi via approver).
 		v1.GET("/approvals/inbox", handlers.Ticket.ApprovalsInbox)

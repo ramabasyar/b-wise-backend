@@ -181,7 +181,6 @@ func (s *Service) GetForViewer(ticketID, userID string) (*entity.Ticket, error) 
 		return &t, nil
 	}
 	return nil, ErrForbidden
-	return &t, nil
 }
 
 // Events — timeline tiket (pemohon hanya melihat visibility public).
@@ -212,7 +211,7 @@ func (s *Service) Queue(teamID, filter, userID string) ([]entity.Ticket, error) 
 		q = q.Where("assignee_id = ?", userID)
 	case "open":
 		q = q.Where("status IN ?", []string{ticketstate.Baru, ticketstate.Terbuka, ticketstate.MenungguApproval})
-	
+
 	case "waiting":
 		q = q.Where("status IN ?", []string{ticketstate.MenungguPemohon, ticketstate.MenungguPihakLain})
 	}
