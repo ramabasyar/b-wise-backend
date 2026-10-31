@@ -62,7 +62,11 @@ func (c *Calendar) AddBusinessMinutes(from time.Time, minutes int) time.Time {
 	loc := c.Loc()
 	t := from.In(loc)
 	remaining := minutes
-	for i := 0; i < 60; i++ {
+	for i := 0; i < 90; i++ {
+		if isHoliday(c, t) {
+			t = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, 1)
+			continue
+		}
 		dayKey := dayKeys[int(t.Weekday())]
 		for _, iv := range c.Weekly[dayKey] {
 			sh, sm := parseHM(iv.Start)
@@ -87,10 +91,6 @@ func (c *Calendar) AddBusinessMinutes(from time.Time, minutes int) time.Time {
 			t = end
 		}
 		next := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, 1)
-		if isHoliday(c, next) {
-			t = next
-			continue
-		}
 		t = next
 	}
 	return t
@@ -104,7 +104,11 @@ func (c *Calendar) BusinessMinutesBetween(from, to time.Time) int {
 	loc := c.Loc()
 	f := from.In(loc)
 	total := 0
-	for i := 0; i < 120; i++ {
+	for i := 0; i < 180; i++ {
+		if isHoliday(c, f) {
+			f = time.Date(f.Year(), f.Month(), f.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, 1)
+			continue
+		}
 		dayKey := dayKeys[int(f.Weekday())]
 		for _, iv := range c.Weekly[dayKey] {
 			sh, sm := parseHM(iv.Start)
