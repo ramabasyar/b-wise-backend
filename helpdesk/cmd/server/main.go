@@ -68,7 +68,13 @@ func main() {
 			zapLogger.Info("[startup] database connected")
 
 			// Auto-migrate entities Pusat Layanan
-			if err := database.AutoMigrate(db, &entity.Team{}); err != nil {
+			if err := database.AutoMigrate(db,
+				&entity.Team{}, &entity.TeamMember{},
+				&entity.ServiceCategory{}, &entity.Service{}, &entity.ServiceForm{},
+				&entity.SLAPolicy{}, &entity.BusinessCalendar{},
+				&entity.Ticket{}, &entity.TicketEvent{}, &entity.TicketAttachment{},
+				&entity.TicketApproval{}, &entity.CannedResponse{}, &entity.CSATResponse{}, &entity.NotificationOutbox{},
+			); err != nil {
 				zapLogger.Info(fmt.Sprintf("[startup] auto-migrate error: %v", err))
 			} else {
 				zapLogger.Info("[startup] auto-migrate teams ok")
