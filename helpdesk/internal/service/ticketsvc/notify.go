@@ -19,12 +19,12 @@ func (s *Service) notifyInApp(recipient, template string, t *entity.Ticket, titl
 		"body":      body,
 	})
 	row := entity.NotificationOutbox{
-		Base:     entity.Base{},
-		Channel:  "in_app",
+		Base:      entity.Base{},
+		Channel:   "in_app",
 		Recipient: recipient,
-		Template: template,
-		Payload:  string(payload),
-		Status:   "sent",
+		Template:  template,
+		Payload:   string(payload),
+		Status:    "sent",
 	}
 	_ = s.db.Create(&row).Error
 }

@@ -12,18 +12,18 @@ import (
 
 // FormField - satu isian formulir; kondisi tampil KT-05 (F2).
 type FormField struct {
-	Key      string   `json:"key"`
-	Label    string   `json:"label"`
-	Type     string   `json:"type"` // teks | paragraf | angka | tanggal | pilihan | multi_pilihan
-	Required bool     `json:"required"`
-	Options  []string `json:"options,omitempty"`
+	Key       string         `json:"key"`
+	Label     string         `json:"label"`
+	Type      string         `json:"type"` // teks | paragraf | angka | tanggal | pilihan | multi_pilihan
+	Required  bool           `json:"required"`
+	Options   []string       `json:"options,omitempty"`
 	VisibleIf *FormCondition `json:"visible_if,omitempty"`
 }
 
 // FormCondition - field hanya tampil bila kondisi terpenuhi.
 type FormCondition struct {
 	Field string `json:"field"`
-	Op    string `json:"op"`  // eq | neq | filled
+	Op    string `json:"op"` // eq | neq | filled
 	Value string `json:"value,omitempty"`
 }
 

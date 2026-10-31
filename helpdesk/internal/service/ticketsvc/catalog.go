@@ -2,18 +2,18 @@ package ticketsvc
 
 // CatalogPublic — item katalog untuk portal pemohon.
 type CatalogPublic struct {
-	ID            string `json:"id"`
-	Slug          string `json:"slug"`
-	Name          string `json:"name"`
-	Description   string `json:"description"`
-	TeamCode      string `json:"team_code"`
-	TeamName      string `json:"team_name"`
-	CategoryName  string `json:"category_name"`
-	TicketType    string `json:"ticket_type"`
-	Requirements  string `json:"requirements"`
-	Procedure     string `json:"procedure"`
-	FeeNote       string `json:"fee_note"`
-	OutputNote    string `json:"output_note"`
+	ID           string `json:"id"`
+	Slug         string `json:"slug"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	TeamCode     string `json:"team_code"`
+	TeamName     string `json:"team_name"`
+	CategoryName string `json:"category_name"`
+	TicketType   string `json:"ticket_type"`
+	Requirements string `json:"requirements"`
+	Procedure    string `json:"procedure"`
+	FeeNote      string `json:"fee_note"`
+	OutputNote   string `json:"output_note"`
 }
 
 // Catalog — seluruh layanan berstatus published dari tim aktif (pemohon, tanpa permission).
