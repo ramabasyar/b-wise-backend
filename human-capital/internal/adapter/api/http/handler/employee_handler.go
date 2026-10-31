@@ -394,3 +394,110 @@ func (h *EmployeeHandler) ResolveApprover(c *gin.Context) {
 	}
 	response.Success(c, gin.H{"approver_user_id": nil, "reason": "no_head", "unit_id": targetUnit})
 }
+
+// UnitMembers GET /api/org/units/:id/members — HC-1 (helpdesk): anggota sebuah unit.
+// Sumber: employee_unit_assignments aktif + profil pegawai (SSO user_id).
+func (h *EmployeeHandler) UnitMembers(c *gin.Context) {
+	unitID := c.Param("id")
+	if unitID == "" || h.db == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "unit id wajib"}})
+		return
+	}
+	var rows []struct {
+		EmployeeID         string
+		IsPrimary          bool
+		StructuralPosition string
+	}
+	h.db.Table("employee_unit_assignments").
+		Where("unit_id = ? AND (valid_to IS NULL OR valid_to > now())", unitID).
+		Find(&rows)
+	type member struct {
+		EmployeeID         string `json:"employee_id"`
+		UserID             string `json:"user_id,omitempty"`
+		FullName           string `json:"full_name"`
+		IsPrimary          bool   `json:"is_primary"`
+		StructuralPosition string `json:"structural_position,omitempty"`
+	}
+	members := make([]member, 0, len(rows))
+	for _, r := range rows {
+		var emp entity.Employee
+		if err := h.db.Select("id, user_id, full_name").Where("id = ? AND status = ?", r.EmployeeID, "active").First(&emp).Error; err != nil {
+			continue // pegawai tidak aktif tidak disajikan
+		}
+		m := member{EmployeeID: r.EmployeeID, FullName: emp.FullName, IsPrimary: r.IsPrimary, StructuralPosition: r.StructuralPosition}
+		if emp.UserID != nil {
+			m.UserID = *emp.UserID
+		}
+		members = append(members, m)
+	}
+	response.Success(c, gin.H{"unit_id": unitID, "members": members})
+}
+
+// ResolveRole GET /api/org/resolve-role?unit_id=&position=&climb=1 — HC-2 (helpdesk):
+// cari pemegang jabatan struktural (kode structural_positions, mis. kaprodi/dekan/kepala_unit)
+// pada sebuah unit; climb -> naik ke unit induk bila belum ketemu, sampai akar pohon.
+func (h *EmployeeHandler) ResolveRole(c *gin.Context) {
+	unitID := c.Query("unit_id")
+	position := c.Query("position")
+	climb := c.Query("climb") == "1" || c.Query("climb") == "true"
+	if unitID == "" || position == "" || h.db == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "unit_id & position wajib"}})
+		return
+	}
+	visited := map[string]bool{}
+	current := unitID
+	for current != "" && !visited[current] {
+		visited[current] = true
+		var holds []struct {
+			EmployeeID         string
+			StructuralPosition string
+		}
+		h.db.Table("employee_unit_assignments").
+			Where("unit_id = ? AND (valid_to IS NULL OR valid_to > now()) AND structural_position = ?", current, position).
+			Find(&holds)
+		for _, hd := range holds {
+			var emp entity.Employee
+			if err := h.db.Select("id, user_id, full_name").Where("id = ? AND status = ?", hd.EmployeeID, "active").First(&emp).Error; err != nil || emp.UserID == nil {
+				continue
+			}
+			deptCode := ""
+			var dept entity.Department
+			if err := h.db.Select("code").Where("id = ?", current).First(&dept).Error; err == nil {
+				deptCode = dept.Code
+			}
+			response.Success(c, gin.H{"user_id": *emp.UserID, "employee_id": hd.EmployeeID, "full_name": emp.FullName, "unit_id": current, "unit_code": deptCode, "position": position})
+			return
+		}
+		if !climb {
+			break
+		}
+		var dept entity.Department
+		err := h.db.Select("parent_id").Where("id = ?", current).First(&dept).Error
+		if err != nil || dept.ParentID == nil {
+			break
+		}
+		current = *dept.ParentID
+	}
+	response.Success(c, gin.H{"user_id": nil, "reason": "not_found", "position": position})
+}
+
+// DirectSupervisor GET /api/org/direct-supervisor?user_id= — HC-3 (helpdesk):
+// atasan langsung (employees.reports_to) sebagai SSO user_id.
+func (h *EmployeeHandler) DirectSupervisor(c *gin.Context) {
+	userID := c.Query("user_id")
+	if userID == "" || h.db == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "user_id wajib"}})
+		return
+	}
+	var emp entity.Employee
+	if err := h.db.Select("id, reports_to").Where("user_id = ?", userID).First(&emp).Error; err != nil || emp.ReportsTo == nil {
+		response.Success(c, gin.H{"user_id": nil, "reason": "no_supervisor"})
+		return
+	}
+	var sup entity.Employee
+	if err := h.db.Select("id, user_id, full_name").Where("id = ? AND status = ?", *emp.ReportsTo, "active").First(&sup).Error; err != nil || sup.UserID == nil {
+		response.Success(c, gin.H{"user_id": nil, "reason": "supervisor_inactive_or_no_account"})
+		return
+	}
+	response.Success(c, gin.H{"user_id": *sup.UserID, "employee_id": sup.ID, "full_name": sup.FullName})
+}

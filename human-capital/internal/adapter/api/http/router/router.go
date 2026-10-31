@@ -96,6 +96,9 @@ func SetupWithLogger(d SetupDeps) *gin.Engine {
 	orgInternal.Use(jwksAuth.RequireAuth(), middleware.RequireServiceToken())
 	{
 		orgInternal.GET("/resolve-approver", d.EmployeeHandler.ResolveApprover)
+		orgInternal.GET("/units/:id/members", d.EmployeeHandler.UnitMembers)     // HC-1 (helpdesk)
+		orgInternal.GET("/resolve-role", d.EmployeeHandler.ResolveRole)          // HC-2 (helpdesk)
+		orgInternal.GET("/direct-supervisor", d.EmployeeHandler.DirectSupervisor) // HC-3 (helpdesk)
 	}
 
 	// ============ ORG MASTERS ============
