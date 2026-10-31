@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"time"
 	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rama/b-wise/helpdesk/internal/adapter/api/http/handler"
@@ -18,10 +18,11 @@ import (
 	"github.com/rama/b-wise/helpdesk/internal/adapter/database"
 	"github.com/rama/b-wise/helpdesk/internal/adapter/logger"
 	"github.com/rama/b-wise/helpdesk/internal/domain/entity"
-	"github.com/rama/b-wise/helpdesk/internal/service/permissionsync"
-	"github.com/rama/b-wise/helpdesk/internal/service/teamsync"
+	"github.com/rama/b-wise/helpdesk/internal/migrations"
 	"github.com/rama/b-wise/helpdesk/internal/service/notifsvc"
+	"github.com/rama/b-wise/helpdesk/internal/service/permissionsync"
 	"github.com/rama/b-wise/helpdesk/internal/service/slasvc"
+	"github.com/rama/b-wise/helpdesk/internal/service/teamsync"
 	"github.com/rama/b-wise/helpdesk/internal/service/ticketsvc"
 	"gorm.io/gorm"
 )
@@ -84,6 +85,11 @@ func main() {
 				zapLogger.Info(fmt.Sprintf("[startup] auto-migrate error: %v", err))
 			} else {
 				zapLogger.Info("[startup] auto-migrate teams ok")
+				if err := migrations.Run(db, migrations.AllMigrations()); err != nil {
+					log.Printf("[startup] default data migration failed: %v", err)
+				} else {
+					log.Printf("[startup] default SLA data ready")
+				}
 
 				// Sinkron tim otomatis dari unit HC (D-15, blueprint v1.1)
 				// Pemantau SLA berkala (SL-04; blueprint 9.5: job tiap 1 menit)

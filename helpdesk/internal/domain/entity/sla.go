@@ -19,6 +19,7 @@ type BusinessCalendar struct {
 	WeeklyHours   string `json:"weekly_hours" gorm:"type:jsonb"`
 	Timezone      string `json:"timezone" gorm:"type:varchar(40);default:'Asia/Jakarta'"`
 	HolidaySource string `json:"holiday_source" gorm:"type:varchar(20);default:'scheduling'"`
+	IsActive      bool   `json:"is_active" gorm:"default:true;index"`
 }
 
 func (BusinessCalendar) TableName() string { return "business_calendars" }
