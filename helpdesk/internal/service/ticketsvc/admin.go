@@ -154,6 +154,9 @@ func (s *Service) Classify(ticketID, actorID, serviceID string) (*entity.Ticket,
 	if err := s.db.Where("id = ?", ticketID).First(&t).Error; err != nil {
 		return nil, ErrNotFound
 	}
+	if !s.IsMember(t.TeamID, actorID) {
+		return nil, ErrForbidden
+	}
 	_ = s.db.Model(&t).Updates(map[string]interface{}{"service_id": svc.ID, "team_id": svc.TeamID}).Error
 	_ = s.addEvent(ticketID, "transfer", "public", actorID, "klasifikasi layanan: "+svc.Name, "")
 	s.notifyInApp(t.RequesterUserID, "status_tiket", &t, "Tiket "+t.Number+" diteruskan", "Tiket Anda diteruskan ke unit penanggung jawab layanan.")

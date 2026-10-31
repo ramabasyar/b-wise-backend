@@ -328,6 +328,9 @@ func (s *Service) Assign(ticketID, actorID, assigneeID string) (*entity.Ticket, 
 	if err := s.db.Where("id = ?", ticketID).First(&t).Error; err != nil {
 		return nil, ErrNotFound
 	}
+	if !s.IsMember(t.TeamID, actorID) || !s.IsMember(t.TeamID, assigneeID) {
+		return nil, ErrForbidden
+	}
 	if err := s.db.Model(&t).Update("assignee_id", assigneeID).Error; err != nil {
 		return nil, err
 	}
@@ -340,6 +343,9 @@ func (s *Service) Take(ticketID, userID string) (*entity.Ticket, error) {
 	var t entity.Ticket
 	if err := s.db.Where("id = ?", ticketID).First(&t).Error; err != nil {
 		return nil, ErrNotFound
+	}
+	if !s.IsMember(t.TeamID, userID) {
+		return nil, ErrForbidden
 	}
 	if t.Status == ticketstate.Terbuka {
 		if err := ValidateTransition(t.Status, ticketstate.Dikerjakan, time.Time{}, s.now()); err != nil {
@@ -366,10 +372,13 @@ func (s *Service) Transfer(ticketID, actorID, toTeamID, reason string) (*entity.
 	if err := s.db.Where("id = ?", ticketID).First(&t).Error; err != nil {
 		return nil, ErrNotFound
 	}
+	if !s.IsMember(t.TeamID, actorID) {
+		return nil, ErrForbidden
+	}
 	if t.TeamID == toTeamID {
 		return nil, fmt.Errorf("%w: tim tujuan sama dengan tim sekarang", ErrValidation)
 	}
-	if err := s.db.Model(&t).Update("team_id", toTeamID).Error; err != nil {
+	if err := s.db.Model(&t).Updates(map[string]interface{}{"team_id": toTeamID, "assignee_id": ""}).Error; err != nil {
 		return nil, err
 	}
 	_ = s.addEvent(ticketID, "transfer", "public", actorID, toTeam.Code, reason)

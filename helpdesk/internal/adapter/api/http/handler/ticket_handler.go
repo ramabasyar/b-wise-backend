@@ -280,6 +280,10 @@ func (h *TicketHandler) Teams(c *gin.Context) {
 
 // TeamMembers - anggota aktif tim (pilihan penugasan; petugas).
 func (h *TicketHandler) TeamMembers(c *gin.Context) {
+	if !h.svc.IsMember(c.Param("id"), ctxUserID(c)) {
+		fail(c, ticketsvc.ErrForbidden)
+		return
+	}
 	list, err := h.svc.TeamMembers(c.Param("id"))
 	if err != nil {
 		fail(c, err)
