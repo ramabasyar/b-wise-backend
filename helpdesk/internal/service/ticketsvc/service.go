@@ -14,6 +14,11 @@ import (
 type Service struct {
 	db  *gorm.DB
 	now func() time.Time
+	// resolusi approver (SetResolver)
+	hcURL        string
+	ssoURL       string
+	clientID     string
+	clientSecret string
 }
 
 func New(db *gorm.DB) *Service { return &Service{db: db, now: time.Now} }
@@ -117,6 +122,9 @@ func (s *Service) Create(p CreateParams) (*entity.Ticket, error) {
 		return nil, err
 	}
 	_ = s.AddSystemEvent(t.ID, "tiket dibuat", team.Code)
+	if svcApproval != "" {
+		s.initApprovalFlow(t.ID, svcApproval, p.RequesterID)
+	}
 	return &t, nil
 }
 
@@ -150,9 +158,16 @@ func (s *Service) GetForViewer(ticketID, userID string) (*entity.Ticket, error) 
 	}
 	var m entity.TeamMember
 	err := s.db.Where("team_id = ? AND user_id = ? AND is_active = ?", t.TeamID, userID, true).First(&m).Error
-	if err != nil {
-		return nil, ErrForbidden
+	if err == nil {
+		return &t, nil
 	}
+	// approver pending juga boleh melihat (AP-03)
+	var ap entity.TicketApproval
+	err = s.db.Where("ticket_id = ? AND approver_id = ? AND (decision IS NULL OR decision = '')", t.ID, userID).First(&ap).Error
+	if err == nil {
+		return &t, nil
+	}
+	return nil, ErrForbidden
 	return &t, nil
 }
 

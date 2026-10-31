@@ -117,6 +117,10 @@ func SetupWithLogger(
 		// Petugas: daftar tim (transfer) & anggota (penugasan).
 		v1.GET("/teams", handlers.Ticket.Teams)
 		v1.GET("/teams/:id/members", handlers.Ticket.TeamMembers)
+
+		// Kotak approval + keputusan (self-service; otorisasi via approver).
+		v1.GET("/approvals/inbox", handlers.Ticket.ApprovalsInbox)
+		v1.POST("/approvals/decide", handlers.Ticket.ApprovalDecide)
 	}
 	_ = permCheck
 

@@ -254,3 +254,32 @@ func (h *TicketHandler) TeamMembers(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"data": list}})
 }
+
+// ApprovalsInbox - kotak approval user (AP-03; self-service tanpa permission).
+func (h *TicketHandler) ApprovalsInbox(c *gin.Context) {
+	list, err := h.svc.ApprovalInbox(ctxUserID(c))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"data": list}})
+}
+
+// ApprovalDecide - keputusan approver (AP-02).
+func (h *TicketHandler) ApprovalDecide(c *gin.Context) {
+	var req struct {
+		TicketID string `json:"ticket_id" binding:"required"`
+		Decision string `json:"decision" binding:"required"`
+		Comment  string `json:"comment"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, err)
+		return
+	}
+	t, err := h.svc.Decide(req.TicketID, ctxUserID(c), req.Decision, req.Comment)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": t})
+}

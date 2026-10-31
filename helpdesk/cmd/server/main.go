@@ -121,6 +121,7 @@ func main() {
 	handlers := &router.Handlers{}
 	if db != nil {
 		ticketSvc := ticketsvc.New(db)
+		ticketSvc.SetResolver(cfg.HC.URL, cfg.SSO.URL, cfg.SSO.ServiceClientID, cfg.SSO.ServiceClientSecret)
 		handlers.Ticket = handler.NewTicketHandler(ticketSvc)
 	}
 
