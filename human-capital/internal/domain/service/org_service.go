@@ -282,3 +282,90 @@ func (s *OrgService) DeleteBranch(id string) error {
 	}
 	return s.branches.Delete(id)
 }
+
+
+// UpdateDepartmentFields - partial update aman: hanya field terkirim yang diubah.
+func (s *OrgService) UpdateDepartmentFields(id string, fields map[string]interface{}, updatedBy string) (*entity.Department, error) {
+	existing, err := s.depts.GetByID(id)
+	if err != nil {
+		if notFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	if v, ok := fields["parent_id"].(string); ok && v != "" {
+		if v == id {
+			return nil, fmt.Errorf("%w: parent tidak boleh diri sendiri", ErrValidation)
+		}
+		cur := &v
+		for cur != nil && *cur != "" {
+			if *cur == id {
+				return nil, fmt.Errorf("%w: parent membentuk siklus", ErrValidation)
+			}
+			p, err := s.depts.GetByID(*cur)
+			if err != nil {
+				break
+			}
+			cur = p.ParentID
+		}
+	}
+	if v, ok := fields["name"].(string); ok {
+		existing.Name = v
+	}
+	if v, ok := fields["description"].(string); ok {
+		existing.Description = v
+	}
+	if v, ok := fields["parent_id"].(string); ok {
+		if v == "" {
+			existing.ParentID = nil
+		} else {
+			existing.ParentID = &v
+		}
+	}
+	if v, ok := fields["org_type"].(string); ok {
+		existing.OrgType = v
+	}
+	if v, ok := fields["is_active"].(bool); ok {
+		existing.IsActive = v
+	}
+	if v, ok := fields["head_employee_id"].(string); ok {
+		if v == "" {
+			existing.HeadEmployeeID = nil
+		} else {
+			existing.HeadEmployeeID = &v
+		}
+	}
+	existing.UpdatedBy = updatedBy
+	if err := s.depts.Update(existing); err != nil {
+		return nil, dupOrErr(err)
+	}
+	return existing, nil
+}
+
+// UpdateDesignationFields - partial update aman (pola sama Department).
+func (s *OrgService) UpdateDesignationFields(id string, fields map[string]interface{}, updatedBy string) (*entity.Designation, error) {
+	existing, err := s.desigs.GetByID(id)
+	if err != nil {
+		if notFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	if v, ok := fields["name"].(string); ok {
+		existing.Name = v
+	}
+	if v, ok := fields["description"].(string); ok {
+		existing.Description = v
+	}
+	if v, ok := fields["level"].(int); ok {
+		existing.Level = v
+	}
+	if v, ok := fields["is_active"].(bool); ok {
+		existing.IsActive = v
+	}
+	existing.UpdatedBy = updatedBy
+	if err := s.desigs.Update(existing); err != nil {
+		return nil, dupOrErr(err)
+	}
+	return existing, nil
+}
