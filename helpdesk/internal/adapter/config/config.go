@@ -20,6 +20,7 @@ type Config struct {
 	SSO      SSOConfig
 	Logger   LoggerConfig
 	CORS     CORSConfig
+	HC       HCConfig
 }
 
 // ServerConfig holds server configuration
@@ -85,6 +86,13 @@ type CORSConfig struct {
 	AllowedOrigins   []string `mapstructure:"allowed_origins"`
 	AllowCredentials bool     `mapstructure:"allow_credentials"`
 	MaxAge           int      `mapstructure:"max_age"`
+}
+
+// HCConfig — koneksi Human Capital untuk sinkronisasi tim (D-15)
+type HCConfig struct {
+	URL             string        `mapstructure:"url"`
+	SyncInterval    time.Duration `mapstructure:"sync_interval"`
+	FrontOfficeCode string        `mapstructure:"front_office_code"`
 }
 
 // Load loads configuration from file and environment variables
@@ -198,6 +206,11 @@ func setDefaults() {
 	viper.SetDefault("cors.allowed_origins", []string{"*"})
 	viper.SetDefault("cors.allow_credentials", true)
 	viper.SetDefault("cors.max_age", 86400)
+
+	// Human Capital (sinkron tim D-15)
+	viper.SetDefault("hc.url", "http://localhost:8081")
+	viper.SetDefault("hc.sync_interval", 5*time.Minute)
+	viper.SetDefault("hc.front_office_code", "PUSAT_LAYANAN")
 }
 
 // bindEnvVars binds environment variables
@@ -206,6 +219,11 @@ func bindEnvVars() {
 	viper.BindEnv("server.port", "SERVER_PORT")
 	viper.BindEnv("server.host", "SERVER_HOST")
 	viper.BindEnv("server.max_body_size", "SERVER_MAX_BODY_SIZE")
+
+	// Human Capital (sinkron tim D-15)
+	viper.BindEnv("hc.url", "HC_URL")
+	viper.BindEnv("hc.sync_interval", "HC_SYNC_INTERVAL")
+	viper.BindEnv("hc.front_office_code", "HC_FRONT_OFFICE_CODE")
 
 	// Database
 	viper.BindEnv("database.host", "DB_HOST")

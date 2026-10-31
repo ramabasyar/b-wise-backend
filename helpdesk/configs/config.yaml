@@ -45,3 +45,8 @@ cors:
     - "http://localhost:3002"
   allow_credentials: true
   max_age: 86400
+
+hc:
+  url: "http://localhost:8081"   # service human-capital (override via HC_URL)
+  sync_interval: 5m              # periode sinkron tim (D-15)
+  front_office_code: "PUSAT_LAYANAN"

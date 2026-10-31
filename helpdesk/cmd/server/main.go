@@ -15,7 +15,9 @@ import (
 	"github.com/rama/b-wise/helpdesk/internal/adapter/config"
 	"github.com/rama/b-wise/helpdesk/internal/adapter/database"
 	"github.com/rama/b-wise/helpdesk/internal/adapter/logger"
+	"github.com/rama/b-wise/helpdesk/internal/domain/entity"
 	"github.com/rama/b-wise/helpdesk/internal/service/permissionsync"
+	"github.com/rama/b-wise/helpdesk/internal/service/teamsync"
 	"gorm.io/gorm"
 )
 
@@ -65,11 +67,20 @@ func main() {
 			defer database.Close(db)
 			zapLogger.Info("[startup] database connected")
 
-			// Auto-migrate your entities here:
-			// err = database.AutoMigrate(db, &entity.YourEntity{})
-			// if err != nil {
-			// 	zapLogger.Info(fmt.Sprintf("[startup] auto-migrate error: %v", err))
-			// }
+			// Auto-migrate entities Pusat Layanan
+			if err := database.AutoMigrate(db, &entity.Team{}); err != nil {
+				zapLogger.Info(fmt.Sprintf("[startup] auto-migrate error: %v", err))
+			} else {
+				zapLogger.Info("[startup] auto-migrate teams ok")
+
+				// Sinkron tim otomatis dari unit HC (D-15, blueprint v1.1)
+				ts := teamsync.New(db, cfg.HC, cfg.SSO, log.Printf)
+				if ts.Enabled() {
+					go ts.RunInBackground(nil, cfg.HC.SyncInterval)
+				} else {
+					log.Printf("[team-sync] dinonaktifkan (HC_URL / kredensial service belum lengkap)")
+				}
+			}
 		}
 	}
 
