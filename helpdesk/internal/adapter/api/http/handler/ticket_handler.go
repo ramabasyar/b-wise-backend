@@ -225,3 +225,12 @@ func (h *TicketHandler) Queue(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"team": team.Code, "tickets": list}})
 }
+// Catalog — katalog layanan untuk semua akun login (PM-01/PM-02).
+func (h *TicketHandler) Catalog(c *gin.Context) {
+	list, err := h.svc.Catalog()
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"data": list}})
+}

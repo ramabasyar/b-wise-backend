@@ -110,6 +110,9 @@ func SetupWithLogger(
 
 		// Antrean tim petugas - helpdesk.queue.read.
 		v1.GET("/queue", permCheck.RequirePermission("helpdesk.queue.read"), handlers.Ticket.Queue)
+
+		// Katalog layanan — semua akun login (PM-01/PM-02, tanpa CheckAccess).
+		v1.GET("/catalog", handlers.Ticket.Catalog)
 	}
 	_ = permCheck
 
