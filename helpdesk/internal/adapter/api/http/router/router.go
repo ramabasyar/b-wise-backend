@@ -141,6 +141,18 @@ func SetupWithLogger(
 		v1.POST("/tickets/:id/csat", handlers.Ticket.SubmitCSAT)
 		v1.GET("/reports/summary", permCheck.RequirePermission("helpdesk.reports.read"), handlers.Ticket.ReportSummary)
 		v1.GET("/reports/export", permCheck.RequirePermission("helpdesk.reports.read"), handlers.Ticket.ExportCSV)
+
+		// Basis pengetahuan (blueprint 6.9): baca = semua akun login; kelola = kb.manage.
+		kb := v1.Group("/kb")
+		{
+			kb.GET("", handlers.Ticket.KBSearch)
+			kb.GET("/manage", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBManageList)
+			kb.POST("", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBCreate)
+			kb.POST("/from-ticket", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.KBFromTicket)
+			kb.GET("/:id", handlers.Ticket.KBGet)
+			kb.PUT("/:id", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBUpdate)
+			kb.POST("/:id/feedback", handlers.Ticket.KBFeedback)
+		}
 	}
 	_ = permCheck
 
