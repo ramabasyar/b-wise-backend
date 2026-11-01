@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -36,7 +38,11 @@ func (h *InternalHandler) Create(c *gin.Context) {
 	if req.Channel == "push" && req.Recipient == "" {
 		req.Recipient = req.UserID // push: recipient = user_id
 	}
-	o, err := h.svc.Enqueue(req.Channel, req.Recipient, req.UserID, req.Topic, req.Title, req.Body, req.Payload)
+	key := ""
+	if raw := c.GetHeader("Idempotency-Key"); raw != "" {
+		key = fmt.Sprintf("%x", sha256.Sum256([]byte(c.GetString("service_name")+":"+raw)))
+	}
+	o, err := h.svc.Enqueue(req.Channel, req.Recipient, req.UserID, req.Topic, req.Title, req.Body, req.Payload, key)
 	if err != nil {
 		response.BadRequest(c, err.Error())
 		return
@@ -94,9 +100,15 @@ func (h *InternalHandler) DeleteSub(c *gin.Context) {
 		response.BadRequest(c, "endpoint wajib")
 		return
 	}
-	if err := h.svc.DeleteSubscription(req.Endpoint); err != nil {
+	if err := h.svc.DeleteSubscription(c.GetString("user_id"), req.Endpoint); err != nil {
 		response.Error(c, err)
 		return
 	}
 	response.Success(c, gin.H{"message": "langganan dihapus"})
+}
+
+// PublicKey exposes only the public half, never the private VAPID key.
+func (h *InternalHandler) PublicKey(c *gin.Context) {
+	key := h.svc.PublicPushKey()
+	response.Success(c, gin.H{"enabled": key != "", "public_key": key})
 }

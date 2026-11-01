@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/httptest"
+	"net/http/httptest"
 	"testing"
 )
 

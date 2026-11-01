@@ -3,7 +3,9 @@ package notifsvc
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"gorm.io/gorm/clause"
 	"net/http"
 	"net/smtp"
 	"os"
@@ -35,7 +37,7 @@ func New(db *gorm.DB) *Service {
 		smtpUser: os.Getenv("SMTP_USER"), smtpPass: os.Getenv("SMTP_PASS"),
 		smtpFrom: os.Getenv("SMTP_FROM"), waURL: os.Getenv("WA_WEBHOOK_URL"), waToken: os.Getenv("WA_WEBHOOK_TOKEN"),
 		vapidSubject: os.Getenv("PUSH_VAPID_SUBJECT"), vapidPublic: os.Getenv("PUSH_VAPID_PUBLIC"), vapidPrivate: os.Getenv("PUSH_VAPID_PRIVATE"),
-		client: &http.Client{Timeout: 10 * time.Second},
+		client: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 	}
 	if n.smtpPort == "" {
 		n.smtpPort = "587"
@@ -56,7 +58,7 @@ func jsonbOr(v string) string {
 var validChannels = map[string]bool{"email": true, "wa": true, "push": true}
 
 // Enqueue — tambah baris outbox pending. Payload string JSON (boleh kosong).
-func (s *Service) Enqueue(channel, recipient, userID, topic, title, body, payload string) (*entity.Outbox, error) {
+func (s *Service) Enqueue(channel, recipient, userID, topic, title, body, payload string, dedupe ...string) (*entity.Outbox, error) {
 	if !validChannels[channel] {
 		return nil, fmt.Errorf("kanal %q tidak dikenal (email|wa|push)", channel)
 	}
@@ -67,8 +69,21 @@ func (s *Service) Enqueue(channel, recipient, userID, topic, title, body, payloa
 		return nil, fmt.Errorf("title wajib diisi")
 	}
 	o := &entity.Outbox{Channel: channel, Recipient: recipient, UserID: userID, Topic: topic, Title: title, Body: body, Payload: jsonbOr(payload), Status: "pending"}
-	if err := s.db.Create(o).Error; err != nil {
+	if !json.Valid([]byte(o.Payload)) {
+		return nil, fmt.Errorf("payload harus JSON")
+	}
+	if len(dedupe) > 0 && dedupe[0] != "" {
+		o.DedupeKey = &dedupe[0]
+	}
+	if err := s.db.Clauses(clause.OnConflict{DoNothing: true}).Create(o).Error; err != nil {
 		return nil, err
+	}
+	if o.DedupeKey != nil {
+		var existing entity.Outbox
+		if err := s.db.Where("dedupe_key = ?", *o.DedupeKey).First(&existing).Error; err != nil {
+			return nil, err
+		}
+		o = &existing
 	}
 	return o, nil
 }
@@ -87,6 +102,9 @@ func (s *Service) SaveSubscription(userID, endpoint, p256dh, auth, ua string) er
 	if userID == "" || endpoint == "" || p256dh == "" || auth == "" {
 		return fmt.Errorf("endpoint, p256dh, auth, dan user wajib")
 	}
+	if err := validateSubscription(endpoint, p256dh, auth); err != nil {
+		return err
+	}
 	var exist entity.PushSubscription
 	if err := s.db.Where("endpoint = ?", endpoint).First(&exist).Error; err == nil {
 		exist.UserID = userID
@@ -99,8 +117,8 @@ func (s *Service) SaveSubscription(userID, endpoint, p256dh, auth, ua string) er
 }
 
 // DeleteSubscription — berhenti berlangganan (dari browser atau user).
-func (s *Service) DeleteSubscription(endpoint string) error {
-	return s.db.Where("endpoint = ?", endpoint).Delete(&entity.PushSubscription{}).Error
+func (s *Service) DeleteSubscription(userID, endpoint string) error {
+	return s.db.Where("user_id = ? AND endpoint = ?", userID, endpoint).Delete(&entity.PushSubscription{}).Error
 }
 
 const maxAttempts = 5
@@ -138,6 +156,10 @@ func (s *Service) ScanOnce() {
 			err = s.sendPush(r)
 		default:
 			err = fmt.Errorf("kanal tidak dikenal: %s", r.Channel)
+		}
+		if errors.Is(err, errNoSubscriptions) {
+			_ = s.db.Model(r).Updates(map[string]interface{}{"status": "skipped", "error": err.Error()}).Error
+			continue
 		}
 		if err == nil {
 			_ = s.db.Model(r).Updates(map[string]interface{}{"status": "sent", "sent_at": time.Now(), "error": ""}).Error
@@ -184,7 +206,13 @@ func (s *Service) sendWA(o *entity.Outbox) error {
 	if s.waURL == "" {
 		return fmt.Errorf("WA gateway belum dikonfigurasi (WA_WEBHOOK_URL)")
 	}
-	payload, _ := json.Marshal(map[string]string{"to": o.Recipient, "title": o.Title, "body": o.Body, "topic": o.Topic})
+	data := map[string]string{"title": o.Title, "body": o.Body, "topic": o.Topic}
+	if o.UserID != "" && o.UserID == o.Recipient {
+		data["user_id"] = o.UserID
+	} else {
+		data["to"] = o.Recipient
+	}
+	payload, _ := json.Marshal(data)
 	req, err := http.NewRequest(http.MethodPost, s.waURL, bytes.NewReader(payload))
 	if err != nil {
 		return err
@@ -202,22 +230,4 @@ func (s *Service) sendWA(o *entity.Outbox) error {
 		return fmt.Errorf("WA gateway status %d", resp.StatusCode)
 	}
 	return nil
-}
-
-// sendPush — kirim web-push ke semua langganan user (v1: pengiriman menyusul
-// bersama lib web-push; langganan + antrean + infra sudah siap).
-func (s *Service) sendPush(o *entity.Outbox) error {
-	uid := o.Recipient
-	if uid == "" {
-		uid = o.UserID
-	}
-	var subs []entity.PushSubscription
-	s.db.Where("user_id = ?", uid).Find(&subs)
-	if len(subs) == 0 {
-		return fmt.Errorf("tidak ada langganan push utk user %s", uid)
-	}
-	if s.vapidPublic == "" || s.vapidPrivate == "" {
-		return fmt.Errorf("push VAPID belum dikonfigurasi (PUSH_VAPID_*) — %d langganan menunggu", len(subs))
-	}
-	return fmt.Errorf("pengiriman web-push aktif menyusul (integrasi lib web-push) — %d langganan", len(subs))
 }

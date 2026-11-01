@@ -6,6 +6,8 @@ import "time"
 // Kanal: email (SMTP), wa (webhook gateway), push (PWA web-push, PM-13).
 type Outbox struct {
 	Base
+	DedupeKey     *string    `json:"-" gorm:"type:varchar(180);uniqueIndex"`
+	Delivered     string     `json:"-" gorm:"type:jsonb;default:'[]'"`
 	Channel       string     `json:"channel" gorm:"type:varchar(10);not null;index"` // email|wa|push
 	Recipient     string     `json:"recipient" gorm:"type:varchar(255);not null"`    // alamat email / nomor / user_id (push)
 	UserID        string     `json:"user_id,omitempty" gorm:"type:varchar(36);index"`

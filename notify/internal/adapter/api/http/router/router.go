@@ -128,6 +128,7 @@ func SetupWithLogger(
 		push := api.Group("/push")
 		push.Use(jwksAuth.RequireAuth())
 		{
+			push.GET("/config", handlers.Internal.PublicKey)
 			push.POST("/subscriptions", handlers.Internal.SaveSub)
 			push.DELETE("/subscriptions", handlers.Internal.DeleteSub)
 		}

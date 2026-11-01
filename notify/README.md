@@ -1,160 +1,42 @@
-# B-Wise Starter Kit
+# B-Wise Notify
 
-Template untuk membuat service baru di ekosistem B-Wise. Sudah termasuk semua boilerplate yang dibutuhkan — tinggal tambah entity dan business logic.
+Central delivery outbox for service-token callers. User-owned Web Push subscriptions; no standalone dashboard menu.
 
-## Apa yang Sudah Ada
+## Contract
 
-| Feature | Status | Lokasi |
-|---------|--------|--------|
-| **Config** (YAML + .env) | ✅ | `internal/adapter/config/` |
-| **Database** (PostgreSQL + GORM) | ✅ | `internal/adapter/database/` |
-| **Redis Cache** | ✅ | `internal/adapter/cache/` |
-| **Zap Logger** | ✅ | `internal/adapter/logger/` |
-| **CORS** (config-driven) | ✅ | `internal/adapter/api/http/middleware/cors.go` |
-| **Security Headers** | ✅ | `internal/adapter/api/http/middleware/security.go` |
-| **Request ID** | ✅ | `internal/adapter/api/http/middleware/request_id.go` |
-| **JWKS Auth** (user + service tokens) | ✅ | `internal/adapter/api/http/middleware/jwks_auth.go` |
-| **Permission Check** | ✅ | `internal/adapter/api/http/middleware/permission_check.go` |
-| **Migration System** | ✅ | `internal/migrations/` |
-| **DTO Pattern** (request/response/mapper) | ✅ | `internal/domain/dto/` |
-| **Error Types** | ✅ | `pkg/errors/` |
-| **Response Helper** | ✅ | `pkg/response/` |
-| **Health Check** | ✅ | `GET /health` |
-| **Graceful Shutdown** | ✅ | `cmd/server/main.go` |
+- `POST /api/internal/notifications`: service token, JSON `channel`, `recipient` (or push `user_id`), `topic`, `title`, `body`, optional JSON-string `payload`.
+- `Idempotency-Key`: stable domain outbox ID; scoped by authenticated service. Replay returns the existing row, including final delivery status.
+- `GET /api/internal/notifications/:id`: delivery status. HTTP 201 means accepted, **not delivered**.
+- `GET /api/push/config`: authenticated user; `{success,data:{enabled,public_key}}`.
+- `POST /api/push/subscriptions`: authenticated user, standard browser subscription JSON + optional `user_agent`.
+- `DELETE /api/push/subscriptions`: authenticated owner only, JSON `endpoint`.
 
-## Struktur Folder
+Statuses: `pending`, `sent` (push provider accepted), `failed`, `skipped` (no active push subscriptions). `sent` does not prove the person saw a notification. Retry: 10 minutes × attempts, max 5; partial successes are recorded per subscription so other-device retries do not resend successful ones. Provider 404/410 removes a subscription; 401/403/429 retain it. Single worker replica supported; crash between external provider acceptance and DB write can still cause at-least-once delivery. SW `tag` collapses duplicate notifications.
 
-```
-kit/
-├── cmd/server/main.go              # Entry point — edit untuk tambah handler
-├── configs/config.yaml             # Config default
-├── .env.example                    # Template env vars
-├── internal/
-│   ├── adapter/
-│   │   ├── config/                 # Config loader (Viper)
-│   │   ├── database/               # PostgreSQL connection
-│   │   ├── cache/                  # Redis cache
-│   │   ├── logger/                 # Zap logger
-│   │   └── api/http/
-│   │       ├── handler/            # HTTP handlers — ADD YOURS HERE
-│   │       ├── middleware/         # All middleware (auth, cors, security, etc.)
-│   │       └── router/             # Route definitions — ADD YOUR ROUTES HERE
-│   ├── domain/
-│   │   ├── entity/                 # Domain entities — ADD YOURS HERE
-│   │   ├── dto/
-│   │   │   ├── request/            # Request DTOs
-│   │   │   ├── response/           # Response DTOs
-│   │   │   └── mapper/             # Entity ↔ DTO mappers
-│   │   └── service/                # Service interfaces
-│   └── migrations/                 # Database migrations
-├── pkg/
-│   ├── errors/                     # AppError types
-│   ├── response/                   # JSON response helpers
-│   ├── jwt/                        # JWT utilities
-│   └── sso/                        # SSO client + cache
-```
+## Configuration
 
-## Cara Pakai
+Standard scaffold DB/SSO settings plus:
 
-### 1. Copy starter kit
+- `PUSH_VAPID_PUBLIC`, `PUSH_VAPID_PRIVATE`: generate once with `go run ./cmd/gen-vapid > /secure/path/vapid.env` (0600). Preserve across deployments; never commit or log keys.
+- `PUSH_VAPID_SUBJECT=mailto:it@binawan.ac.id`
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`
+- `WA_WEBHOOK_URL`, `WA_WEBHOOK_TOKEN`: webhook accepts `user_id` for IKU user routing or `to` for explicit phone routing.
+- Consumers Helpdesk/IKU: `NOTIFY_URL=http://127.0.0.1:8092`, their own existing `SSO_URL` and `SERVICE_CLIENT_*`.
 
-```bash
-# Copy ke lokasi baru
-cp -r ~/project/go/starter/kit ~/project/go/b-wise/my-new-service
+Without NOTIFY_URL, consumers retain their old transport. With it, new domain push rows are relayed idempotently and remain pending until central delivery settles. Existing email/WA rows are relayed rather than sent twice. IKU email has no trustworthy recipient-profile mapping yet: it fails explicitly instead of fabricating user-ID addresses. SMTP/WA still require actual channel configuration.
 
-# Update module name
-cd ~/project/go/b-wise/my-new-service
-sed -i '' 's|github.com/rama/kit|github.com/rama/b-wise/my-new-service|g' $(find . -name "*.go" -type f)
-```
+Portal: same-origin nginx `/api/notify/` → notify `/`; optional direct dev override `NEXT_PUBLIC_NOTIFY_URL`. Enable/disable under Profile, only on explicit user interaction. On iOS, install to Home Screen first. Push content on lock screens is deliberately generic; detail requires authenticated navigation. Browser logout unsubscribes locally.
 
-### 2. Setup .env
+## Verification
 
-```bash
-cp .env.example .env
-# Edit .env dengan values yang benar
-```
-
-### 3. Register di SSO
-
-Daftarkan service baru di SSO Service Registry untuk mendapatkan `SERVICE_CLIENT_ID` dan `SERVICE_CLIENT_SECRET`.
-
-### 4. Add Entity
-
-Buat file entity baru, misal `internal/domain/entity/employee.go`:
-
-```go
-package entity
-
-type Employee struct {
-    Base
-    FirstName string `json:"first_name" gorm:"type:varchar(100);not null"`
-    LastName  string `json:"last_name" gorm:"type:varchar(100)"`
-    Email     string `json:"email" gorm:"type:varchar(255);uniqueIndex;not null"`
-    Status    string `json:"status" gorm:"type:varchar(20);default:'active'"`
-}
-
-func (Employee) TableName() string { return "employees" }
-```
-
-### 5. Add AutoMigrate in main.go
-
-```go
-// Uncomment dan tambah entity
-err = database.AutoMigrate(db, &entity.Employee{})
-```
-
-### 6. Add Routes in router.go
-
-```go
-// Di router.Handlers struct:
-type Handlers struct {
-    Employee *handler.EmployeeHandler
-}
-
-// Di SetupWithLogger:
-employees := api.Group("/employees")
-employees.GET("", handlers.Employee.List)
-employees.GET("/:id", handlers.Employee.Get)
-employees.POST("", handlers.Employee.Create)
-employees.PUT("/:id", handlers.Employee.Update)
-employees.DELETE("/:id", handlers.Employee.Delete)
-```
-
-### 7. Run
-
-```bash
-go build -o bin/service ./cmd/server/
-./bin/service
-```
-
-## Middleware Chain (Sudah Terpasang)
+`go test ./...` runs unit tests. To exercise actual PostgreSQL constraints/retry/ownership in an isolated temporary schema:
 
 ```
-Request → Recovery → CORS → Security Headers → Request ID → Logger → JWKS Auth → Handler
+NOTIFY_TEST_DSN='host=localhost user=macbook dbname=postgres sslmode=disable' go test ./internal/service/notifsvc
 ```
 
-- **Recovery**: Catch panics → 500
-- **CORS**: Config-driven origins
-- **Security**: 11 security headers (HSTS, CSP, etc.)
-- **Request ID**: UUID per request, in logs + response header
-- **Logger**: Structured JSON logging with request ID
-- **JWKS Auth**: Validates JWT via SSO JWKS endpoint (supports both RSA + HMAC)
+Tests use encrypted Web Push requests with an in-process fake HTTP transport: no external notifications. Browser-provider receipt remains a separate manual E2E check on an opted-in device.
 
-## Env Variables
+## Deployment / rollback
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `SERVER_PORT` | No | 8081 | HTTP port |
-| `DB_HOST` | No | localhost | PostgreSQL host |
-| `DB_PORT` | No | 5432 | PostgreSQL port |
-| `DB_USER` | No | postgres | DB user |
-| `DB_PASSWORD` | No | postgres | DB password |
-| `DB_NAME` | No | kit_db | DB name |
-| `JWT_SECRET` | Yes | - | Must match SSO |
-| `SSO_URL` | No | http://localhost:8080 | SSO service URL |
-| `PERMISSION_SERVICE_URL` | No | http://localhost:8082 | Permission Service URL |
-| `SERVICE_NAME` | Yes | - | Registered service name |
-| `SERVICE_CLIENT_ID` | Yes | - | From SSO Service Registry |
-| `SERVICE_CLIENT_SECRET` | Yes | - | From SSO Service Registry |
-| `CORS_ALLOWED_ORIGINS` | No | * | Comma-separated origins |
-| `LOGGER_LEVEL` | No | info | debug/info/warn/error |
+Commit/push to GitHub, server fast-forward pull, build fresh binaries, back up existing binary + .env, atomically rename and restart notify before consumers. Do not regenerate VAPID keys on redeploy. To disable central relay, restore consumer .env without NOTIFY_URL and restart; pending push rows are left intact for later resumption. Existing in-app notifications continue unaffected. Keep old binaries for rollback. AI is separate: staging must use AI_DISABLED=1 until a dedicated reachable model service exists.

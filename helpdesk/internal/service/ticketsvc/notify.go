@@ -2,6 +2,8 @@ package ticketsvc
 
 import (
 	"encoding/json"
+	"gorm.io/gorm"
+	"os"
 
 	"github.com/rama/b-wise/helpdesk/internal/domain/entity"
 )
@@ -21,6 +23,7 @@ func (s *Service) notifyInApp(recipient, template string, t *entity.Ticket, titl
 		"number":    t.Number,
 		"title":     title,
 		"body":      body,
+		"url":       "/dashboard/helpdesk/my-tickets/" + t.ID,
 	})
 	row := entity.NotificationOutbox{
 		Base:      entity.Base{},
@@ -30,7 +33,16 @@ func (s *Service) notifyInApp(recipient, template string, t *entity.Ticket, titl
 		Payload:   string(payload),
 		Status:    "sent",
 	}
-	_ = s.db.Create(&row).Error
+	_ = s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&row).Error; err != nil {
+			return err
+		}
+		if os.Getenv("NOTIFY_URL") == "" {
+			return nil
+		}
+		push := entity.NotificationOutbox{Channel: "push", Recipient: recipient, Template: template, Payload: string(payload), Status: "pending"}
+		return tx.Create(&push).Error
+	})
 }
 
 // Notifications - daftar notifikasi in-app user (terbaru dulu) + jumlah belum dibaca.

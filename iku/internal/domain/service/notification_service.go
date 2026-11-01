@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/rama/b-wise/iku/pkg/notifyclient"
 	"net/http"
 	"net/smtp"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	entity "github.com/rama/b-wise/iku/internal/domain/entity"
@@ -19,7 +21,9 @@ import (
 // (SMTP_*, WA_WEBHOOK_*) — tanpa env → channel "log" (simulasi, aman utk dev).
 
 type Notifier struct {
-	db *gorm.DB
+	db    *gorm.DB
+	relay *notifyclient.Client
+	mu    sync.Mutex
 
 	smtpHost, smtpPort, smtpUser, smtpPass, smtpFrom string
 	waURL, waToken                                   string
@@ -27,7 +31,7 @@ type Notifier struct {
 }
 
 func NewNotifier(db *gorm.DB) *Notifier {
-	n := &Notifier{db: db,
+	n := &Notifier{db: db, relay: notifyclient.New(),
 		smtpHost: os.Getenv("SMTP_HOST"), smtpPort: os.Getenv("SMTP_PORT"),
 		smtpUser: os.Getenv("SMTP_USER"), smtpPass: os.Getenv("SMTP_PASS"),
 		smtpFrom: os.Getenv("SMTP_FROM"), waURL: os.Getenv("WA_WEBHOOK_URL"), waToken: os.Getenv("WA_WEBHOOK_TOKEN"),
@@ -55,6 +59,9 @@ func (n *Notifier) Notify(userIDs []string, topic, title, body, refType, refID s
 		inapp := &entity.Notification{UserID: uid, Channel: "inapp", Status: "sent", Topic: topic, Title: title, Body: body, RefType: refType, RefID: refID, SentAt: ptrTime(time.Now())}
 		_ = n.db.Create(inapp).Error
 
+		if n.relay.Enabled() {
+			_ = n.db.Create(&entity.Notification{UserID: uid, Channel: "push", Status: "pending", Topic: topic, Title: title, Body: body, RefType: refType, RefID: refID}).Error
+		}
 		// Opsi C fase-1: enqueue sbg pending — worker retry-backoff yang mengirim (bukan kirim-lupa).
 		if n.smtpHost != "" {
 			_ = n.db.Create(&entity.Notification{UserID: uid, Channel: "email", Status: "pending", Topic: topic, Title: title, Body: body, RefType: refType, RefID: refID}).Error

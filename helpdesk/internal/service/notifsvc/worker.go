@@ -2,10 +2,12 @@
 package notifsvc
 
 import (
-	"fmt"
+	"encoding/json"
+	"github.com/rama/b-wise/helpdesk/pkg/notifyclient"
 	"net/smtp"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rama/b-wise/helpdesk/internal/domain/entity"
@@ -14,15 +16,17 @@ import (
 
 // Worker - kirim notifikasi email tertunda (kanal in_app tak perlu diproses).
 type Worker struct {
-	db  *gorm.DB
-	log func(format string, args ...interface{})
+	mu    sync.Mutex
+	relay *notifyclient.Client
+	db    *gorm.DB
+	log   func(format string, args ...interface{})
 }
 
 func NewWorker(db *gorm.DB, logFn func(string, ...interface{})) *Worker {
 	if logFn == nil {
 		logFn = func(string, ...interface{}) {}
 	}
-	return &Worker{db: db, log: logFn}
+	return &Worker{db: db, log: logFn, relay: notifyclient.New()}
 }
 
 func smtpReady() bool {
@@ -57,20 +61,54 @@ func sendEmail(to, subject, body string) error {
 
 // ScanOnce - proses baris email pending (maks N per putaran).
 func (w *Worker) ScanOnce() {
-	if !smtpReady() {
-		return // email belum dikonfigurasi (F0-3) - in_app tetap jalan
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if !w.relay.Enabled() && !smtpReady() {
+		return
 	}
 	var rows []entity.NotificationOutbox
-	w.db.Where("channel = ? AND status = ?", "email", "pending").Limit(10).Find(&rows)
+	w.db.Where("channel IN ? AND status = ? AND (next_attempt_at IS NULL OR next_attempt_at <= ?)", []string{"email", "push"}, "pending", time.Now()).Limit(10).Find(&rows)
 	for i := range rows {
 		r := &rows[i]
-		if err := sendEmail(r.Recipient, "Notifikasi Pusat Layanan", r.Payload); err != nil {
-			w.log("[notif-worker] email gagal ke %s: %v", r.Recipient, err)
-			w.db.Model(r).Updates(map[string]interface{}{"attempts": r.Attempts + 1, "next_attempt_at": time.Now().Add(time.Hour)})
+		var err error
+		if w.relay.Enabled() {
+			var payload map[string]string
+			_ = json.Unmarshal([]byte(r.Payload), &payload)
+			title := payload["title"]
+			if title == "" {
+				title = "Notifikasi Pusat Layanan"
+			}
+			body := payload["body"]
+			if body == "" {
+				body = r.Payload
+			}
+			result, e := w.relay.Relay("helpdesk:"+r.ID, notifyclient.Message{Channel: r.Channel, Recipient: r.Recipient, UserID: r.Recipient, Topic: r.Template, Title: title, Body: body, Payload: r.Payload})
+			err = e
+			if err == nil {
+				switch result.Status {
+				case "sent", "skipped", "failed":
+					w.db.Model(r).Update("status", result.Status)
+				}
+				continue
+			}
+		} else if r.Channel == "email" {
+			err = sendEmail(r.Recipient, "Notifikasi Pusat Layanan", r.Payload)
+		} else {
 			continue
 		}
-		w.db.Model(r).Update("status", "sent")
+		if err == nil {
+			w.db.Model(r).Update("status", "sent")
+			continue
+		}
+		attempts := r.Attempts + 1
+		patch := map[string]interface{}{"attempts": attempts, "next_attempt_at": time.Now().Add(time.Duration(attempts) * 10 * time.Minute)}
+		if attempts >= 5 {
+			patch["status"] = "failed"
+		}
+		w.db.Model(r).Updates(patch)
+		w.log("[notif-worker] relay/send gagal: %v", err)
 	}
+
 }
 
 func (w *Worker) RunInBackground(stopCh <-chan struct{}, interval time.Duration) {
@@ -88,5 +126,3 @@ func (w *Worker) RunInBackground(stopCh <-chan struct{}, interval time.Duration)
 		}
 	}
 }
-
-var _ = fmt.Sprintf
