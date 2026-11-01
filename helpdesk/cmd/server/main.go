@@ -144,6 +144,7 @@ func main() {
 		}
 		ticketSvc.RunApprovalWatchers(nil, time.Minute)
 		ticketSvc.RunRetensi(nil, 24*time.Hour)
+		go ticketSvc.KBEmbedPending() // KB-06: embedding artikel terbit (AI lokal)
 		handlers.Ticket = handler.NewTicketHandler(ticketSvc)
 	}
 

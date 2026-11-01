@@ -25,6 +25,10 @@ func (s *Service) KBListTeam(userID string) ([]entity.KBArticle, error) {
 // KBSearch - artikel TERBIT utk semua akun (KB-02): full-text konfigurasi
 // indonesian; bila kueri kosong/gagal, jatuh ke ILIKE sederhana.
 func (s *Service) KBSearch(q, teamCode string) ([]entity.KBArticle, error) {
+	// KB-06: semantik dulu (bge-m3+pgvector); fallback kata-kunci di bawah.
+	if sem := s.kbSemantic(q, teamCode); len(sem) > 0 {
+		return sem, nil
+	}
 	qs := strings.TrimSpace(q)
 	scope := func() *gorm.DB {
 		db := s.db.Model(&entity.KBArticle{}).Where("status = ?", "published")
@@ -119,6 +123,7 @@ func (s *Service) KBUpdate(userID, id string, fields map[string]interface{}) (*e
 		return nil, err
 	}
 	_ = s.db.Where("id = ?", id).First(&a).Error
+	go s.KBEmbedOne(id) // KB-06: re-embed async pasca update/publish
 	return &a, nil
 }
 
