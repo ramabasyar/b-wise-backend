@@ -1,6 +1,7 @@
 package ticketsvc
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -85,4 +86,67 @@ func (s *Service) AISuggestReply(ticketID, userID string) (map[string]string, er
 		return nil, fmt.Errorf("%w: %v", ErrValidation, err)
 	}
 	return map[string]string{"draft": strings.TrimSpace(out), "disclaimer": aiAssistDisclaimer}, nil
+}
+
+// ==================== OT-06: Triase AI (F4) ====================
+// Saran layanan/tim/prioritas utk tiket baru (front office/email/WA).
+// Kandidat = layanan TERBIT + nama tim; balasan model dipaksa JSON murni.
+
+// AITriage - saran klasifikasi tiket baru (perm helpdesk.tickets.work, utk FO).
+func (s *Service) AITriage(subject, answers string) (map[string]string, error) {
+	if !kbAI.Enabled() {
+		return nil, fmt.Errorf("%w: fitur AI nonaktif", ErrValidation)
+	}
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		return nil, fmt.Errorf("%w: subject wajib", ErrValidation)
+	}
+	type svcRow struct {
+		Slug     string
+		Name     string
+		TeamName string
+	}
+	var rows []svcRow
+	s.db.Raw("SELECT sv.slug, sv.name, COALESCE(t.name, '') AS team_name FROM services sv LEFT JOIN teams t ON t.id = sv.team_id WHERE sv.status = ? ORDER BY sv.name LIMIT 60", "published").Scan(&rows)
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("%w: katalog layanan kosong", ErrValidation)
+	}
+	var cand strings.Builder
+	for _, r := range rows {
+		fmt.Fprintf(&cand, "- %s — %s (tim: %s)\n", r.Slug, r.Name, r.TeamName)
+	}
+	system := "Anda asisten triase helpdesk Universitas Binawan. Pilih layanan paling cocok dari daftar kandidat untuk tiket baru, tentukan prioritas, dan beri alasan singkat. Balas HANYA JSON valid tanpa teks lain, persis format: {\"layanan\": \"<nama persis dari daftar>\", \"tim\": \"<nama tim>\", \"prioritas\": \"low|normal|high|urgent\", \"alasan\": \"<1 kalimat>\"}"
+	prompt := "Daftar layanan kandidat:\n" + cand.String() + "\nTiket baru:\nJudul: " + subject
+	if ans := strings.TrimSpace(answers); ans != "" {
+		prompt += "\nIsian formulir: " + truncStr(ans, 800)
+	}
+	out, err := kbAI.Chat(system, prompt)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrValidation, err)
+	}
+	res := parseAIJSON(out)
+	res["disclaimer"] = aiAssistDisclaimer
+	return res, nil
+}
+
+// parseAIJSON - ambil objek JSON pertama dari teks model (buang pagar markdown).
+func parseAIJSON(s string) map[string]string {
+	start := strings.Index(s, "{")
+	end := strings.LastIndex(s, "}")
+	m := map[string]string{}
+	if start < 0 || end <= start {
+		m["raw"] = truncStr(s, 400)
+		return m
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(s[start:end+1]), &parsed); err != nil {
+		m["raw"] = truncStr(s, 400)
+		return m
+	}
+	for _, k := range []string{"layanan", "tim", "prioritas", "alasan"} {
+		if v, ok := parsed[k].(string); ok {
+			m[k] = v
+		}
+	}
+	return m
 }
