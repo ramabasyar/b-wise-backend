@@ -1,0 +1,31 @@
+# perm.manifest.yaml — sumber kebenaran permissions & menu service ini.
+# Self-sync otomatis ke Permission Service setiap kali service boot (idempotent).
+# Edit file ini saat menambah fitur — review bareng code, deploy = terdaftar.
+service:
+  name: notify
+  description: "notify service"
+  base_url: ""        # opsional: diisi dari env jika perlu
+  sync_enabled: true  # false = jangan auto-sync (admin kelola manual via API)
+
+permissions:
+  - permission: notify.read
+    description: Lihat data notify
+  - permission: notify.write
+    description: Tambah/ubah data notify
+  - permission: notify.delete
+    description: Hapus data notify
+
+menu:
+  - label: "notify"
+    path: /dashboard/notify
+    icon: Box
+    sort_order: 10
+    children:
+      - label: Daftar Data
+        path: /dashboard/notify/items
+        icon: List
+        required_permission: notify.read
+      - label: Tambah Data
+        path: /dashboard/notify/items/new
+        icon: PlusCircle
+        required_permission: notify.write
