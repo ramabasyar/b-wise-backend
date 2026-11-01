@@ -142,6 +142,7 @@ func main() {
 
 				// F7: notifier (in-app + email/WA env-gated) + export + metrics
 				notifier := domainsvc.NewNotifier(db)
+				go notifier.RunInBackground(nil, 30*time.Second) // outbox worker (opsi C fase-1)
 				achSvc.Notifier = notifier
 				planSvc.Notifier = notifier
 				cmpSvc.Notifier = notifier

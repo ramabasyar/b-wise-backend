@@ -119,10 +119,10 @@ type CreateIndicatorRequest struct {
 	IkuCode      string `json:"iku_code" binding:"required"`
 	Name         string `json:"name" binding:"required"`
 	Description  string `json:"description"`
-	Nature       string `json:"nature"`       // wajib|pilihan|partisipatif (default wajib)
-	PeriodType   string `json:"period_type"`  // quarterly|semester|annual (default annual)
-	RollupRule   string `json:"rollup_rule"`  // sum|avg|last (default avg)
-	Polarity     string `json:"polarity"`     // higher_is_better|lower_is_better (default higher)
+	Nature       string `json:"nature"`      // wajib|pilihan|partisipatif (default wajib)
+	PeriodType   string `json:"period_type"` // quarterly|semester|annual (default annual)
+	RollupRule   string `json:"rollup_rule"` // sum|avg|last (default avg)
+	Polarity     string `json:"polarity"`    // higher_is_better|lower_is_better (default higher)
 	ApplicablePT string `json:"applicable_pt"`
 	SortOrder    int    `json:"sort_order"`
 	RegVersionID string `json:"reg_version_id" binding:"required"`
@@ -189,7 +189,7 @@ type UpdateIndicatorRequest struct {
 	RollupRule  *string `json:"rollup_rule"` // sum|avg|last
 	Name        *string `json:"name"`        // rename indikator
 	Description *string `json:"description"`
-	IsActive    *bool   `json:"is_active"`   // aktivasi kampus (indikator berlaku/tidak utk kampus ini)
+	IsActive    *bool   `json:"is_active"` // aktivasi kampus (indikator berlaku/tidak utk kampus ini)
 	SortOrder   *int    `json:"sort_order"`
 }
 

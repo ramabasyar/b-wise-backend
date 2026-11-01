@@ -55,11 +55,12 @@ func (n *Notifier) Notify(userIDs []string, topic, title, body, refType, refID s
 		inapp := &entity.Notification{UserID: uid, Channel: "inapp", Status: "sent", Topic: topic, Title: title, Body: body, RefType: refType, RefID: refID, SentAt: ptrTime(time.Now())}
 		_ = n.db.Create(inapp).Error
 
+		// Opsi C fase-1: enqueue sbg pending — worker retry-backoff yang mengirim (bukan kirim-lupa).
 		if n.smtpHost != "" {
-			n.dispatch(&entity.Notification{UserID: uid, Channel: "email", Topic: topic, Title: title, Body: body}, false)
+			_ = n.db.Create(&entity.Notification{UserID: uid, Channel: "email", Status: "pending", Topic: topic, Title: title, Body: body, RefType: refType, RefID: refID}).Error
 		}
 		if n.waURL != "" {
-			n.dispatch(&entity.Notification{UserID: uid, Channel: "wa", Topic: topic, Title: title, Body: body}, false)
+			_ = n.db.Create(&entity.Notification{UserID: uid, Channel: "wa", Status: "pending", Topic: topic, Title: title, Body: body, RefType: refType, RefID: refID}).Error
 		}
 	}
 }
@@ -67,27 +68,6 @@ func (n *Notifier) Notify(userIDs []string, topic, title, body, refType, refID s
 // NotifyAdmins — broadcast ke NOTIFICATION_ADMIN_IDS (pimpinan/operator IKU).
 func (n *Notifier) NotifyAdmins(topic, title, body, refType, refID string) {
 	n.Notify(n.adminIDs, topic, title, body, refType, refID)
-}
-
-// dispatch — kirim satu channel & catat hasil (row audit pengiriman).
-func (n *Notifier) dispatch(row *entity.Notification, persist bool) {
-	if persist {
-		_ = n.db.Create(row).Error
-	}
-	var err error
-	switch row.Channel {
-	case "email":
-		err = n.sendEmail(row)
-	case "wa":
-		err = n.sendWA(row)
-	}
-	patch := map[string]interface{}{"status": "sent", "sent_at": time.Now()}
-	if err != nil {
-		patch["status"], patch["error"] = "failed", trunc(err.Error(), 480)
-	}
-	if persist {
-		_ = n.db.Model(row).Updates(patch).Error
-	}
 }
 
 func (n *Notifier) sendEmail(row *entity.Notification) error {
