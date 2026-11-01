@@ -138,6 +138,8 @@ func SetupWithLogger(
 
 		// Front office & survei & laporan.
 		v1.POST("/tickets/:id/classify", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.Classify)
+		v1.POST("/tickets/:id/ai-summary", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.AISummaryH)
+		v1.POST("/tickets/:id/ai-suggest-reply", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.AISuggestReplyH)
 		v1.POST("/tickets/:id/csat", handlers.Ticket.SubmitCSAT)
 		v1.GET("/reports/summary", permCheck.RequirePermission("helpdesk.reports.read"), handlers.Ticket.ReportSummary)
 		v1.GET("/reports/export", permCheck.RequirePermission("helpdesk.reports.read"), handlers.Ticket.ExportCSV)

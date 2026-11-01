@@ -85,3 +85,43 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+// chatModel - nama model obrolan dari env (default qwen2.5:3b-instruct utk dev Mac).
+func (c *Client) chatModel() string {
+	if m := os.Getenv("AI_CHAT_MODEL"); m != "" {
+		return m
+	}
+	return "qwen2.5:3b-instruct"
+}
+
+// Chat - satu putaran obrolan (non-stream). System opsional.
+// Dekode via map (tanpa struct tag) supaya bebas jebakan kutip lintas-lapis.
+func (c *Client) Chat(system, user string) (string, error) {
+	msgs := []map[string]string{}
+	if system != "" {
+		msgs = append(msgs, map[string]string{"role": "system", "content": system})
+	}
+	msgs = append(msgs, map[string]string{"role": "user", "content": user})
+	body, _ := json.Marshal(map[string]any{"model": c.chatModel(), "messages": msgs, "stream": false})
+	req, err := http.NewRequest(http.MethodPost, c.baseURL+"/api/chat", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := c.http.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("ai chat: %w", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(res.Body)
+		return "", fmt.Errorf("ai chat: HTTP %d: %s", res.StatusCode, string(b)[:min(200, len(b))])
+	}
+	var out map[string]any
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return "", err
+	}
+	msg, _ := out["message"].(map[string]any)
+	content, _ := msg["content"].(string)
+	return content, nil
+}
