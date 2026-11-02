@@ -61,3 +61,19 @@ func (h *NotificationHandler) ReadOne(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
+
+// Delete DELETE /api/notifications/:id — hapus notifikasi in-app milik user (revamp Notification 2 Nov).
+func (h *NotificationHandler) Delete(c *gin.Context) {
+	uid := actorOf(c)
+	res := h.db.Where("id = ? AND user_id = ? AND channel = 'inapp'", c.Param("id"), uid).
+		Delete(&entity.Notification{})
+	if res.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": gin.H{"message": res.Error.Error()}})
+		return
+	}
+	if res.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "error": gin.H{"message": "Notifikasi tidak ditemukan"}})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}

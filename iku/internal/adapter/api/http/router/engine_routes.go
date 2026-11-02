@@ -84,6 +84,7 @@ func (h *Handlers) mountEngineRoutes(api *gin.RouterGroup, jwksAuth *middleware.
 			nt.GET("", permCheck.RequirePermission("notifications.read"), h.Notification.List)
 			nt.POST("/read-all", permCheck.RequirePermission("notifications.read"), h.Notification.ReadAll)
 			nt.POST("/:id/read", permCheck.RequirePermission("notifications.read"), h.Notification.ReadOne)
+			nt.DELETE("/:id", permCheck.RequirePermission("notifications.read"), h.Notification.Delete)
 		}
 	}
 	if h.Metrics != nil {
