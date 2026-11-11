@@ -14,6 +14,8 @@ permissions:
     description: Lihat antrean tim di Pusat Layanan
   - permission: helpdesk.tickets.work
     description: Ambil, balas, tugaskan, dan transfer tiket (petugas)
+  - permission: helpdesk.super
+    description: Akses penuh lintas tim — anggota virtual semua tim (investigasi & bantu setup unit)
   - permission: helpdesk.catalog.manage
     description: Kelola layanan, formulir, SLA, kategori katalog
   - permission: helpdesk.teams.manage

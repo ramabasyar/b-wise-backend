@@ -221,6 +221,8 @@ func (s *Syncer) SyncOnce() error {
 			}
 			if err := s.db.Create(&def).Error; err == nil {
 				defaulted++
+			} else {
+				s.logFn("[team-sync] auto-catalog gagal tim %s: %v", activeTeams[i].Code, err)
 			}
 		}
 	}
