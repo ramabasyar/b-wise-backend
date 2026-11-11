@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/rama/b-wise/helpdesk/internal/adapter/api/http/handler"
+	"github.com/rama/b-wise/helpdesk/internal/adapter/api/http/middleware"
 	"github.com/rama/b-wise/helpdesk/internal/adapter/api/http/router"
 	"github.com/rama/b-wise/helpdesk/internal/adapter/cache"
 	"github.com/rama/b-wise/helpdesk/internal/adapter/config"
@@ -158,7 +159,12 @@ func main() {
 		ticketSvc.RunApprovalWatchers(nil, time.Minute)
 		ticketSvc.RunRetensi(nil, 24*time.Hour)
 		go ticketSvc.KBEmbedPending() // KB-06: embedding artikel terbit (AI lokal)
-		handlers.Ticket = handler.NewTicketHandler(ticketSvc)
+		superCheck := middleware.NewPermissionCheck(cfg.SSO.PermissionServiceURL, cfg.SSO.ServiceName).
+			WithSSO(cfg.SSO.URL, cfg.SSO.ServiceClientID, cfg.SSO.ServiceClientSecret)
+		handlers.Ticket = handler.NewTicketHandler(ticketSvc, func(uid, perm string) bool {
+			res, err := superCheck.CheckPermissions(uid, []string{perm})
+			return err == nil && res[perm]
+		})
 	}
 
 	// ===== Setup router =====

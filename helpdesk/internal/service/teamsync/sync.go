@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/rama/b-wise/helpdesk/internal/adapter/config"
@@ -199,7 +200,31 @@ func (s *Syncer) SyncOnce() error {
 		}
 	}
 
-	s.logFn("[team-sync] selesai: unit HC=%d tim_baru=%d diperbarui=%d (unit aktif non-group -> tim aktif)", len(depts), created, updated)
+	// Auto-katalog: setiap tim AKTIF yang belum punya layanan mendapat satu
+	// layanan umum default (published) — unit baru dari HC langsung muncul di
+	// Pusat Layanan tanpa menunggu admin unit mendefinisikan layanan sendiri.
+	defaulted := 0
+	var activeTeams []entity.Team
+	if err := s.db.Where("is_active = ?", true).Find(&activeTeams).Error; err == nil {
+		for i := range activeTeams {
+			var cnt int64
+			if err := s.db.Model(&entity.Service{}).Where("team_id = ?", activeTeams[i].ID).Count(&cnt).Error; err != nil || cnt > 0 {
+				continue
+			}
+			def := entity.Service{
+				TeamID:      activeTeams[i].ID,
+				Slug:        "umum-" + slugifyTeam(activeTeams[i].Code),
+				Name:        "Layanan Umum " + activeTeams[i].Name,
+				Description: "Layanan umum unit " + activeTeams[i].Name + " — dibuat otomatis dari sinkronisasi unit Human Capital; silakan disesuaikan lewat manajemen katalog.",
+				TicketType:  "request",
+				Status:      "published",
+			}
+			if err := s.db.Create(&def).Error; err == nil {
+				defaulted++
+			}
+		}
+	}
+	s.logFn("[team-sync] selesai: unit HC=%d tim_baru=%d diperbarui=%d layanan_default=%d (unit aktif non-group -> tim aktif)", len(depts), created, updated, defaulted)
 	return nil
 }
 
@@ -243,4 +268,17 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n]
+}
+
+// slugifyTeam — kode unit jadi slug aman (huruf kecil & digit dipertahankan, lainnya jadi "-").
+func slugifyTeam(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		if (r >= 97 && r <= 122) || (r >= 48 && r <= 57) {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune(45)
+		}
+	}
+	return b.String()
 }

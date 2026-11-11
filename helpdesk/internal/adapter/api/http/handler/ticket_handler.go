@@ -13,10 +13,22 @@ import (
 
 // TicketHandler — endpoint tiket F1 (pemohon self-service + petugas).
 type TicketHandler struct {
-	svc *ticketsvc.Service
+	svc  *ticketsvc.Service
+	perm func(userID, permission string) bool // cek permission-service; nil = fitur super nonaktif
 }
 
-func NewTicketHandler(svc *ticketsvc.Service) *TicketHandler { return &TicketHandler{svc: svc} }
+func NewTicketHandler(svc *ticketsvc.Service, perm func(userID, permission string) bool) *TicketHandler {
+	return &TicketHandler{svc: svc, perm: perm}
+}
+
+// isSuper — pemegang helpdesk.super berlaku sebagai anggota SEMUA tim
+// (mode investigasi/admin global: lihat & kerjakan tiket lintas unit).
+func (h *TicketHandler) isSuper(uid string) bool {
+	if h.perm == nil || uid == "" {
+		return false
+	}
+	return h.perm(uid, "helpdesk.super")
+}
 
 func ctxUserID(c *gin.Context) string {
 	v, ok := c.Get("user_id")
@@ -99,7 +111,7 @@ func (h *TicketHandler) Detail(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	member := h.svc.IsMember(t.TeamID, uid)
+	member := h.svc.IsMember(t.TeamID, uid) || h.isSuper(uid)
 	events, err := h.svc.Events(id, member)
 	if err != nil {
 		fail(c, err)
@@ -143,7 +155,7 @@ func (h *TicketHandler) AddEvent(c *gin.Context) {
 	kind := "reply"
 	visibility := "public"
 	if req.Kind == "note" {
-		if !h.svc.IsMember(t.TeamID, uid) {
+		if !h.svc.IsMember(t.TeamID, uid) && !h.isSuper(uid) {
 			fail(c, ticketsvc.ErrForbidden)
 			return
 		}
@@ -174,7 +186,7 @@ func (h *TicketHandler) ChangeStatus(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if t.RequesterUserID == uid && !h.svc.IsMember(t.TeamID, uid) {
+	if t.RequesterUserID == uid && !h.svc.IsMember(t.TeamID, uid) && !h.isSuper(uid) {
 		// pemohon murni: hanya batalkan (belum selesai) atau konfirmasi tutup
 		allowed := (req.Status == "dibatalkan") || (req.Status == "ditutup" && t.Status == "selesai")
 		if !allowed {
@@ -238,12 +250,21 @@ func (h *TicketHandler) Transfer(c *gin.Context) {
 // Queue — antrean tim petugas (AG-01); tim dari keanggotaan user.
 func (h *TicketHandler) Queue(c *gin.Context) {
 	uid := ctxUserID(c)
+	filter := c.DefaultQuery("filter", "all")
+	if h.isSuper(uid) {
+		list, err := h.svc.QueueAll(filter, uid)
+		if err != nil {
+			fail(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"team": "*", "super": true, "tickets": list}})
+		return
+	}
 	team, err := h.svc.TeamOf(uid)
 	if err != nil {
 		fail(c, err)
 		return
 	}
-	filter := c.DefaultQuery("filter", "all")
 	list, err := h.svc.Queue(team.ID, filter, uid)
 	if err != nil {
 		fail(c, err)
@@ -297,7 +318,7 @@ func (h *TicketHandler) Teams(c *gin.Context) {
 
 // TeamMembers - anggota aktif tim (pilihan penugasan; petugas).
 func (h *TicketHandler) TeamMembers(c *gin.Context) {
-	if !h.svc.IsMember(c.Param("id"), ctxUserID(c)) {
+	if !h.svc.IsMember(c.Param("id"), ctxUserID(c)) && !h.isSuper(ctxUserID(c)) {
 		fail(c, ticketsvc.ErrForbidden)
 		return
 	}

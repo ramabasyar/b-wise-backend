@@ -239,6 +239,24 @@ func (s *Service) Queue(teamID, filter, userID string) ([]entity.Ticket, error) 
 	return list, err
 }
 
+// QueueAll — antrean gabungan seluruh tim aktif (mode investigasi helpdesk.super).
+func (s *Service) QueueAll(filter, userID string) ([]entity.Ticket, error) {
+	q := s.db.Where("team_id IN (SELECT id FROM teams WHERE is_active = ?)", true)
+	switch filter {
+	case "unassigned":
+		q = q.Where("assignee_id IS NULL OR assignee_id = ''")
+	case "mine":
+		q = q.Where("assignee_id = ?", userID)
+	case "open":
+		q = q.Where("status IN ?", []string{ticketstate.Baru, ticketstate.Terbuka, ticketstate.MenungguApproval})
+	case "waiting":
+		q = q.Where("status IN ?", []string{ticketstate.MenungguPemohon, ticketstate.MenungguPihakLain})
+	}
+	var list []entity.Ticket
+	err := q.Order("created_at ASC").Find(&list).Error
+	return list, err
+}
+
 // TeamOf — tim aktif tempat user menjadi anggota (untuk antrean petugas).
 func (s *Service) TeamOf(userID string) (*entity.Team, error) {
 	var m entity.TeamMember
