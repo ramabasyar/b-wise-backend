@@ -46,6 +46,8 @@ func main() {
 	var orgHandler *handler.OrgHandler
 	var dictHandler *handler.DictionaryHandler
 	var leaveHandler *handler.LeaveHandler
+	var leaveAdminHandler *handler.LeaveAdminHandler
+	var attHandler *handler.AttendanceHandler
 	var db *gorm.DB
 
 	if cfg.Database.Host != "" {
@@ -89,6 +91,9 @@ func main() {
 				&entity.LeaveType{},
 				&entity.LeaveBalance{},
 				&entity.LeaveRequest{},
+				&entity.LeavePolicy{},
+				&entity.LeaveBlockDate{},
+				&entity.AttendanceRecord{},
 			); err != nil {
 				zapLogger.Warn(fmt.Sprintf("[startup] migration failed: %v", err))
 			} else {
@@ -109,7 +114,9 @@ func main() {
 			empSvc := domainsvc.NewEmployeeService(empRepo, movRepo)
 			orgSvc := domainsvc.NewOrgService(deptRepo, desigRepo, empTypeRepo, gradeRepo, branchRepo)
 			movSvc := domainsvc.NewMovementService(movRepo, empRepo, db)
-			leaveSvc := domainsvc.NewLeaveService(leaveRepo, empRepo, db)
+			leaveAdminSvc := domainsvc.NewLeaveAdminService(db)
+			leaveSvc := domainsvc.NewLeaveService(leaveRepo, empRepo, db, leaveAdminSvc)
+			attSvc := domainsvc.NewAttendanceService(db)
 
 			// SSO + Permission clients (dipakai onboarding & perm middleware)
 			ssoClient := sso.NewSSOClient(cfg.SSO.URL, cfg.SSO.ServiceClientID, cfg.SSO.ServiceClientSecret)
@@ -123,6 +130,8 @@ func main() {
 			orgHandler = handler.NewOrgHandler(orgSvc)
 			dictHandler = handler.NewDictionaryHandler(db)
 			leaveHandler = handler.NewLeaveHandler(leaveSvc)
+			leaveAdminHandler = handler.NewLeaveAdminHandler(leaveAdminSvc)
+			attHandler = handler.NewAttendanceHandler(attSvc)
 
 			// Seed master reference (idempoten — tanpa data dummy)
 			seedReference(db, zapLogger)
@@ -167,6 +176,8 @@ func main() {
 		OrgHandler:           orgHandler,
 		DictionaryHandler:    dictHandler,
 		LeaveHandler:         leaveHandler,
+		LeaveAdminHandler:    leaveAdminHandler,
+		AttendanceHandler:    attHandler,
 		SSOURL:               cfg.SSO.URL,
 		PermissionServiceURL: cfg.SSO.PermissionServiceURL,
 		ServiceName:          cfg.SSO.ServiceName,

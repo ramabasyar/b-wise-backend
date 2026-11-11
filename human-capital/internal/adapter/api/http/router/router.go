@@ -22,6 +22,8 @@ type SetupDeps struct {
 	OrgHandler           *handler.OrgHandler
 	DictionaryHandler    *handler.DictionaryHandler
 	LeaveHandler         *handler.LeaveHandler
+	LeaveAdminHandler    *handler.LeaveAdminHandler
+	AttendanceHandler    *handler.AttendanceHandler
 	SSOURL               string
 	PermissionServiceURL string
 	ServiceName          string
@@ -173,6 +175,50 @@ func SetupWithLogger(d SetupDeps) *gin.Engine {
 		leaveAll.Use(jwksAuth.RequireAuth())
 		{
 			leaveAll.GET("", permCheck.RequirePermission("leave_requests.read"), d.LeaveHandler.AllRequests)
+		}
+
+		// Admin cuti: kebijakan, saldo/alokasi tahunan, tanggal blokir.
+		if d.LeaveAdminHandler != nil {
+			leavePol := api.Group("/leave/policies")
+			leavePol.Use(jwksAuth.RequireAuth())
+			{
+				leavePol.GET("", permCheck.RequirePermission("leave_balances.read"), d.LeaveAdminHandler.ListPolicies)
+				leavePol.PUT("", permCheck.RequirePermission("leave_policies.write"), d.LeaveAdminHandler.UpsertPolicy)
+				leavePol.DELETE("/:id", permCheck.RequirePermission("leave_policies.write"), d.LeaveAdminHandler.DeletePolicy)
+			}
+			leaveBlk := api.Group("/leave/block-dates")
+			leaveBlk.Use(jwksAuth.RequireAuth())
+			{
+				leaveBlk.GET("", permCheck.RequirePermission("leave_balances.read"), d.LeaveAdminHandler.ListBlockDates)
+				leaveBlk.POST("", permCheck.RequirePermission("leave_block_dates.write"), d.LeaveAdminHandler.CreateBlockDate)
+				leaveBlk.DELETE("/:id", permCheck.RequirePermission("leave_block_dates.write"), d.LeaveAdminHandler.DeleteBlockDate)
+			}
+			leaveBal := api.Group("/leave/balances")
+			leaveBal.Use(jwksAuth.RequireAuth())
+			{
+				leaveBal.GET("", permCheck.RequirePermission("leave_balances.read"), d.LeaveAdminHandler.ListBalances)
+				leaveBal.PUT("/:id", permCheck.RequirePermission("leave_balances.write"), d.LeaveAdminHandler.AdjustBalance)
+				leaveBal.POST("/generate", permCheck.RequirePermission("leave_balances.write"), d.LeaveAdminHandler.GenerateBalances)
+			}
+		}
+
+		// Presensi: mandiri (auth saja) + admin (read/write permission).
+		if d.AttendanceHandler != nil {
+			attSelf := api.Group("/attendance")
+			attSelf.Use(jwksAuth.RequireAuth())
+			{
+				attSelf.POST("/check-in", d.AttendanceHandler.CheckIn)
+				attSelf.POST("/check-out", d.AttendanceHandler.CheckOut)
+				attSelf.GET("/my", d.AttendanceHandler.MyRecords)
+			}
+			attAdm := api.Group("/attendance/adm")
+			attAdm.Use(jwksAuth.RequireAuth())
+			{
+				attAdm.GET("/records", permCheck.RequirePermission("attendance.read"), d.AttendanceHandler.ListRecords)
+				attAdm.POST("/records", permCheck.RequirePermission("attendance.write"), d.AttendanceHandler.UpsertManual)
+				attAdm.POST("/import", permCheck.RequirePermission("attendance.write"), d.AttendanceHandler.Import)
+				attAdm.GET("/summary", permCheck.RequirePermission("attendance.read"), d.AttendanceHandler.Summary)
+			}
 		}
 	}
 

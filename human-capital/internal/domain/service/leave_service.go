@@ -32,6 +32,9 @@ var (
 	ErrLeaveTypeNotFound = errors.New("jenis cuti tidak ditemukan")
 	ErrLeaveTypeInUse    = errors.New("jenis cuti masih dipakai pengajuan — nonaktifkan (toggle Active) daripada hapus")
 	ErrLeaveNumberGen    = errors.New("gagal membuat nomor pengajuan — coba lagi")
+	ErrLeaveBlocked      = errors.New("ada tanggal terblokir dalam rentang pengajuan")
+	ErrLeaveHalfDayOff   = errors.New("jenis cuti ini tidak mengizinkan setengah hari")
+	ErrLeaveHalfDayRange = errors.New("setengah hari hanya berlaku untuk satu tanggal (mulai = selesai)")
 )
 
 // LeaveBalanceView — saldo utk tampilan Cuti Saya.
@@ -41,6 +44,7 @@ type LeaveBalanceView struct {
 	Name        string  `json:"name"`
 	Year        int     `json:"year"`
 	Entitled    float64 `json:"entitled"`
+	CarriedOver float64 `json:"carried_over"`
 	Used        float64 `json:"used"`
 	Remaining   float64 `json:"remaining"`
 }
@@ -62,10 +66,11 @@ type LeaveService struct {
 	repo    repository.LeaveRepository
 	empRepo repository.EmployeeRepository
 	db      *gorm.DB
+	admin   *LeaveAdminService
 }
 
-func NewLeaveService(repo repository.LeaveRepository, empRepo repository.EmployeeRepository, db *gorm.DB) *LeaveService {
-	return &LeaveService{repo: repo, empRepo: empRepo, db: db}
+func NewLeaveService(repo repository.LeaveRepository, empRepo repository.EmployeeRepository, db *gorm.DB, admin *LeaveAdminService) *LeaveService {
+	return &LeaveService{repo: repo, empRepo: empRepo, db: db, admin: admin}
 }
 
 func (s *LeaveService) myEmployee(userID string) (*entity.Employee, error) {
@@ -151,7 +156,13 @@ func (s *LeaveService) ensureBalances(employeeID string, year int) ([]LeaveBalan
 			if !errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil, err
 			}
-			nb := &entity.LeaveBalance{EmployeeID: employeeID, LeaveTypeID: t.ID, Year: year, Entitled: float64(t.DefaultDays)}
+			ent := float64(t.DefaultDays)
+			if s.admin != nil {
+				if rule, rerr := s.admin.ResolveRule(nil, t.ID); rerr == nil && rule.AnnualDays > 0 {
+					ent = rule.AnnualDays
+				}
+			}
+			nb := &entity.LeaveBalance{EmployeeID: employeeID, LeaveTypeID: t.ID, Year: year, Entitled: ent}
 			if err := s.repo.CreateBalance(nb); err != nil {
 				// race dgn request paralel → baris sudah ada: ambil yang ada
 				b, err = s.repo.GetBalance(employeeID, t.ID, year)
@@ -167,14 +178,14 @@ func (s *LeaveService) ensureBalances(employeeID string, year int) ([]LeaveBalan
 		}
 		out = append(out, LeaveBalanceView{
 			LeaveTypeID: t.ID, Code: t.Code, Name: t.Name, Year: year,
-			Entitled: b.Entitled, Used: b.Used, Remaining: b.Entitled - b.Used,
+			Entitled: b.Entitled, CarriedOver: b.CarriedOver, Used: b.Used, Remaining: LeaveRemaining(b, time.Now()),
 		})
 	}
 	return out, nil
 }
 
 // Submit — ajukan cuti (status langsung submitted; approver = snapshot reports_to).
-func (s *LeaveService) Submit(userID, typeID, start, end, reason string) (*entity.LeaveRequest, error) {
+func (s *LeaveService) Submit(userID, typeID, start, end, reason string, halfDay bool) (*entity.LeaveRequest, error) {
 	emp, err := s.myEmployee(userID)
 	if err != nil {
 		return nil, err
@@ -196,7 +207,10 @@ func (s *LeaveService) Submit(userID, typeID, start, end, reason string) (*entit
 	if ed.Before(sd) {
 		return nil, ErrLeaveRange
 	}
-	days := int(ed.Sub(sd).Hours()/24) + 1
+	days := float64(int(ed.Sub(sd).Hours()/24)) + 1
+	if halfDay {
+		days = 0.5
+	}
 	if days <= 0 {
 		return nil, ErrLeaveRange
 	}
@@ -210,6 +224,20 @@ func (s *LeaveService) Submit(userID, typeID, start, end, reason string) (*entit
 	if !t.Active {
 		return nil, ErrLeaveTypeInactive
 	}
+	if s.admin != nil {
+		if halfDay {
+			rule, rerr := s.admin.ResolveRule(strPtr(emp.EmploymentTypeID), t.ID)
+			if rerr == nil && !rule.AllowHalfDay {
+				return nil, ErrLeaveHalfDayOff
+			}
+			if !sd.Equal(ed) {
+				return nil, ErrLeaveHalfDayRange
+			}
+		}
+		if b, berr := s.admin.BlockedInRange(sd, ed); berr == nil && b != nil {
+			return nil, fmt.Errorf("%w: %s (%s)", ErrLeaveBlocked, b.Date.Format("2006-01-02"), b.Reason)
+		}
+	}
 	if ok, err := s.repo.HasOverlap(emp.ID, sd, ed); err != nil {
 		return nil, err
 	} else if ok {
@@ -221,12 +249,12 @@ func (s *LeaveService) Submit(userID, typeID, start, end, reason string) (*entit
 	}
 	if b, err := s.repo.GetBalance(emp.ID, t.ID, sd.Year()); err != nil {
 		return nil, err
-	} else if b.Entitled-b.Used < float64(days) {
+	} else if LeaveRemaining(b, time.Now()) < days {
 		return nil, ErrLeaveInsufficient
 	}
 
 	req := &entity.LeaveRequest{
-		EmployeeID: emp.ID, LeaveTypeID: t.ID, StartDate: sd, EndDate: ed, Days: days,
+		EmployeeID: emp.ID, LeaveTypeID: t.ID, StartDate: sd, EndDate: ed, Days: days, HalfDay: halfDay,
 		Reason: strings.TrimSpace(reason), Status: "submitted", ApproverID: *emp.ReportsTo,
 		SubmittedAt: time.Now(),
 	}
@@ -360,7 +388,7 @@ func (s *LeaveService) Decide(userID, requestID, action, note string) (*entity.L
 			} else if err != nil {
 				return err
 			}
-			if bal.Entitled-bal.Used < float64(req.Days) {
+			if LeaveRemaining(&bal, time.Now()) < req.Days {
 				return ErrLeaveInsufficient
 			}
 			if err := tx.Model(&entity.LeaveBalance{}).Where("id = ?", bal.ID).

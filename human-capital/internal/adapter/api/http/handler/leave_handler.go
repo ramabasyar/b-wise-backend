@@ -24,6 +24,7 @@ type leaveSubmitDTO struct {
 	StartDate   string `json:"start_date" binding:"required"`
 	EndDate     string `json:"end_date" binding:"required"`
 	Reason      string `json:"reason"`
+	HalfDay    bool   `json:"half_day"`
 }
 
 type leaveDecisionDTO struct {
@@ -148,7 +149,7 @@ func (h *LeaveHandler) Submit(c *gin.Context) {
 		response.BadRequest(c, err.Error())
 		return
 	}
-	req, err := h.svc.Submit(middleware.GetUserID(c), dto.LeaveTypeID, dto.StartDate, dto.EndDate, dto.Reason)
+	req, err := h.svc.Submit(middleware.GetUserID(c), dto.LeaveTypeID, dto.StartDate, dto.EndDate, dto.Reason, dto.HalfDay)
 	if err != nil {
 		leaveErrStatus(c, err)
 		return

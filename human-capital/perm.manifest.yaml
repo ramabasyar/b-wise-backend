@@ -55,6 +55,20 @@ permissions:
     description: Kelola jenis cuti (default hari, aktif/nonaktif)
   - permission: leave_requests.read
     description: Lihat semua pengajuan cuti lintas pegawai (monitoring HC)
+  - permission: leave_balances.read
+    description: Lihat saldo cuti & kebijakan (admin HC)
+  - permission: leave_balances.write
+    description: Kelola saldo cuti + generate alokasi tahunan (carry-over)
+  - permission: leave_policies.write
+    description: Kelola kebijakan cuti per jenis kepegawaian
+  - permission: leave_block_dates.write
+    description: Kelola tanggal blokir pengajuan cuti
+  - permission: attendance.self
+    description: Check-in/out presensi mandiri dan lihat riwayat sendiri
+  - permission: attendance.read
+    description: Lihat data presensi semua pegawai dan rekap bulanan
+  - permission: attendance.write
+    description: Input manual dan impor data presensi
 
 # Role default service ini — di-upsert self-sync (union, tidak menghapus role/permission
 # yang dibuat admin manual). Calon staging bootstrap: tanpa ini portal gak ada role utk di-assign.
@@ -191,3 +205,23 @@ menu:
         icon: CalendarDays
         required_permission: leave_requests.read
         sort_order: 13
+      - label: Saldo & Kebijakan Cuti
+        path: /dashboard/human-capital/leave/balances
+        icon: Scale
+        required_permission: leave_balances.read
+        sort_order: 20
+      - label: Tanggal Blokir Cuti
+        path: /dashboard/human-capital/leave/block-dates
+        icon: CalendarX
+        required_permission: leave_balances.read
+        sort_order: 21
+      - label: Presensi Saya
+        path: /dashboard/human-capital/attendance/my
+        icon: Clock
+        required_permission: attendance.self
+        sort_order: 22
+      - label: Data Presensi
+        path: /dashboard/human-capital/attendance/records
+        icon: CalendarCheck
+        required_permission: attendance.read
+        sort_order: 23
