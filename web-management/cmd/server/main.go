@@ -1,17 +1,17 @@
 package main
 
 import (
-	"strings"
 	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 	"github.com/rama/b-wise/web-management/internal/adapter/api/http/handler"
 	"github.com/rama/b-wise/web-management/internal/adapter/api/http/router"
 	"github.com/rama/b-wise/web-management/internal/adapter/cache"
@@ -22,6 +22,7 @@ import (
 	"github.com/rama/b-wise/web-management/internal/domain/entity"
 	"github.com/rama/b-wise/web-management/internal/domain/service"
 	"github.com/rama/b-wise/web-management/internal/service/permissionsync"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
@@ -64,7 +65,20 @@ func main() {
 	// Connect database (optional — service can run without DB)
 	var db *gorm.DB
 	if cfg.Database.Host != "" {
-		db, err = database.New(cfg.Database)
+		// Retry connect: host DB bisa belum siap saat semua VM boot bersamaan
+		// (insiden 11 Nov 2026: service jalan degraded tanpa DB -> endpoint 404).
+		// Retry sampai 60x10s; gagal terus -> Fatal (unit systemd Restart=always).
+		for dbAttempt := 1; ; dbAttempt++ {
+			db, err = database.New(cfg.Database)
+			if err == nil {
+				break
+			}
+			if dbAttempt >= 60 {
+				zapLogger.Fatal(fmt.Sprintf("[startup] database unreachable after %d attempts: %v", dbAttempt, err))
+			}
+			zapLogger.Warn(fmt.Sprintf("[startup] database not ready (attempt %d/60), retrying in 10s: %v", dbAttempt, err))
+			time.Sleep(10 * time.Second)
+		}
 		if err != nil {
 			zapLogger.Info(fmt.Sprintf("[startup] database skipped: %v", err))
 		} else {
