@@ -207,12 +207,21 @@ func (s *Syncer) SyncOnce() error {
 	var activeTeams []entity.Team
 	if err := s.db.Where("is_active = ?", true).Find(&activeTeams).Error; err == nil {
 		for i := range activeTeams {
+			// Kategori unit: jamin ada supaya Pusat Layanan menampilkan grup per
+			// unit (seperti katalog manual), bukan semua numpuk di fallback "Layanan".
+			catID := s.ensureUnitCategory(activeTeams[i].Name)
+			if catID != "" {
+				s.db.Model(&entity.Service{}).
+					Where("team_id = ? AND slug LIKE ? AND (category_id IS NULL OR category_id = '')", activeTeams[i].ID, "umum-%").
+					Update("category_id", catID)
+			}
 			var cnt int64
 			if err := s.db.Model(&entity.Service{}).Where("team_id = ?", activeTeams[i].ID).Count(&cnt).Error; err != nil || cnt > 0 {
 				continue
 			}
 			def := entity.Service{
 				TeamID:       activeTeams[i].ID,
+				CategoryID:   catID,
 				Slug:         "umum-" + slugifyTeam(activeTeams[i].Code),
 				Name:         "Layanan Umum " + activeTeams[i].Name,
 				Description:  "Layanan umum unit " + activeTeams[i].Name + " — dibuat otomatis dari sinkronisasi unit Human Capital; silakan disesuaikan lewat manajemen katalog.",
@@ -231,6 +240,23 @@ func (s *Syncer) SyncOnce() error {
 	}
 	s.logFn("[team-sync] selesai: unit HC=%d tim_baru=%d diperbarui=%d layanan_default=%d (unit aktif non-group -> tim aktif)", len(depts), created, updated, defaulted)
 	return nil
+}
+
+// ensureUnitCategory — pastikan service_categories punya entri bernama unit;
+// dibuat sekali (ikon netral, sort di akhir); admin bebas rename/ikon/sort setelahnya.
+func (s *Syncer) ensureUnitCategory(name string) string {
+	var cat entity.ServiceCategory
+	if err := s.db.Where("name = ?", name).First(&cat).Error; err == nil {
+		return cat.ID
+	}
+	var mx int
+	s.db.Model(&entity.ServiceCategory{}).Select("COALESCE(MAX(sort),0)").Scan(&mx)
+	cat = entity.ServiceCategory{Name: name, Icon: "layers", Sort: mx + 1}
+	if err := s.db.Create(&cat).Error; err != nil {
+		s.logFn("[team-sync] kategori unit gagal dibuat %s: %v", name, err)
+		return ""
+	}
+	return cat.ID
 }
 
 // RunInBackground — sinkron saat boot (retry dengan backoff) lalu berkala.
