@@ -188,9 +188,32 @@ func (h *EmployeeHandler) UpdateEmployee(c *gin.Context) {
 	response.Success(c, in)
 }
 
-// DeleteEmployee DELETE /api/employees/:id — soft delete (hanya non-aktif)
+// DeleteEmployee DELETE /api/employees/:id — soft delete.
+// Pegawai yang masih aktif diproses separation OTOMATIS dulu (movement
+// tercatat beserta relieving date & alasan — riwayat audit tetap terjaga),
+// lalu data di-soft-delete. Tidak lagi menolak dengan popup manual.
 func (h *EmployeeHandler) DeleteEmployee(c *gin.Context) {
-	if err := h.svc.Delete(c.Param("id")); err != nil {
+	id := c.Param("id")
+	existing, _, _, err := h.svc.Get(id)
+	if err != nil {
+		errStatus(c, err)
+		return
+	}
+	if existing.Status == "active" {
+		now := time.Now()
+		if _, err := h.movSvc.Create(service.MovementInput{
+			EmployeeID:       existing.ID,
+			MovementType:     entity.MovementSeparation,
+			EffectiveDate:    now,
+			RelievingDate:    &now,
+			ReasonForLeaving: "Penghapusan data pegawai melalui tombol hapus",
+			Notes:            "Separation otomatis saat penghapusan data pegawai",
+		}, actor(c)); err != nil {
+			errStatus(c, err)
+			return
+		}
+	}
+	if err := h.svc.Delete(id); err != nil {
 		errStatus(c, err)
 		return
 	}
