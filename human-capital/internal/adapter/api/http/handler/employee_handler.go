@@ -114,9 +114,9 @@ func (h *EmployeeHandler) GetEmployee(c *gin.Context) {
 	})
 }
 
-// UpdateEmployee PUT /api/employees/:id — hanya field non-employment.
-// Field employment (designation/department/grade/branch/employment_type/reports_to/status)
-// di-skip — wajib via POST /api/movements (riwayat).
+// UpdateEmployee PUT /api/employees/:id — semua field boleh diupdate.
+// Perubahan field employment (designation/department/grade/branch/employment_type/reports_to/status)
+// otomatis dicatat sebagai movement (riwayat old→new) — jejak audit tetap terjaga.
 func (h *EmployeeHandler) UpdateEmployee(c *gin.Context) {
 	existing, _, _, err := h.svc.Get(c.Param("id"))
 	if err != nil {
@@ -129,20 +129,57 @@ func (h *EmployeeHandler) UpdateEmployee(c *gin.Context) {
 		return
 	}
 
-	// employment fields: preserve dari existing (guard server-side)
+	// Identitas & audit dipreserve; employment fields kini diizinkan berubah —
+	// setiap perubahan field employment (whitelist movement) dicatat OTOMATIS
+	// sebagai movement (snapshot old→new), lalu data pegawai di-update penuh.
 	in.ID = existing.ID
 	in.UserID = existing.UserID
-	in.EmployeeNumber = existing.EmployeeNumber
-	in.EmploymentTypeID = existing.EmploymentTypeID
-	in.DepartmentID = existing.DepartmentID
-	in.DesignationID = existing.DesignationID
-	in.GradeID = existing.GradeID
-	in.BranchID = existing.BranchID
-	in.ReportsTo = existing.ReportsTo
-	in.Status = existing.Status
-	in.JoinedDate = existing.JoinedDate
 	in.CreatedBy = existing.CreatedBy
 	in.UpdatedBy = actor(c)
+
+	movChanges := map[string]string{}
+	if in.EmploymentTypeID != existing.EmploymentTypeID {
+		movChanges["employment_type_id"] = in.EmploymentTypeID
+	}
+	if ptrVal(in.DepartmentID) != ptrVal(existing.DepartmentID) {
+		movChanges["department_id"] = ptrVal(in.DepartmentID)
+	}
+	if ptrVal(in.DesignationID) != ptrVal(existing.DesignationID) {
+		movChanges["designation_id"] = ptrVal(in.DesignationID)
+	}
+	if ptrVal(in.GradeID) != ptrVal(existing.GradeID) {
+		movChanges["grade_id"] = ptrVal(in.GradeID)
+	}
+	if ptrVal(in.BranchID) != ptrVal(existing.BranchID) {
+		movChanges["branch_id"] = ptrVal(in.BranchID)
+	}
+	if ptrVal(in.ReportsTo) != ptrVal(existing.ReportsTo) {
+		movChanges["reports_to"] = ptrVal(in.ReportsTo)
+	}
+	if len(movChanges) > 0 {
+		if _, err := h.movSvc.Create(service.MovementInput{
+			EmployeeID:    existing.ID,
+			MovementType:  entity.MovementTransfer,
+			EffectiveDate: time.Now(),
+			Notes:         "Perubahan data kepegawaian via form edit pegawai",
+			Changes:       movChanges,
+		}, actor(c)); err != nil {
+			errStatus(c, err)
+			return
+		}
+	}
+	if in.Status != existing.Status {
+		if _, err := h.movSvc.Create(service.MovementInput{
+			EmployeeID:    existing.ID,
+			MovementType:  entity.MovementStatusChange,
+			EffectiveDate: time.Now(),
+			Notes:         "Perubahan status via form edit pegawai",
+			Changes:       map[string]string{"status": in.Status},
+		}, actor(c)); err != nil {
+			errStatus(c, err)
+			return
+		}
+	}
 
 	if err := h.svc.Update(&in); err != nil {
 		errStatus(c, err)
@@ -517,4 +554,12 @@ func (h *EmployeeHandler) DirectSupervisor(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"user_id": *sup.UserID, "employee_id": sup.ID, "full_name": sup.FullName})
+}
+
+// ptrVal — bantu bandingkan *string secara nilai (nil = "").
+func ptrVal(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }
