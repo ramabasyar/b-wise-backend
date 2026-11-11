@@ -212,12 +212,15 @@ func (s *Syncer) SyncOnce() error {
 				continue
 			}
 			def := entity.Service{
-				TeamID:      activeTeams[i].ID,
-				Slug:        "umum-" + slugifyTeam(activeTeams[i].Code),
-				Name:        "Layanan Umum " + activeTeams[i].Name,
-				Description: "Layanan umum unit " + activeTeams[i].Name + " — dibuat otomatis dari sinkronisasi unit Human Capital; silakan disesuaikan lewat manajemen katalog.",
-				TicketType:  "request",
-				Status:      "published",
+				TeamID:       activeTeams[i].ID,
+				Slug:         "umum-" + slugifyTeam(activeTeams[i].Code),
+				Name:         "Layanan Umum " + activeTeams[i].Name,
+				Description:  "Layanan umum unit " + activeTeams[i].Name + " — dibuat otomatis dari sinkronisasi unit Human Capital; silakan disesuaikan lewat manajemen katalog.",
+				TicketType:   "request",
+				Audience:     "[]", // jsonb: string kosong ditolak DB (SQLSTATE 22P02)
+				ApprovalFlow: "null",
+				TaskTemplate: "null",
+				Status:       "published",
 			}
 			if err := s.db.Create(&def).Error; err == nil {
 				defaulted++
