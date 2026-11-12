@@ -157,7 +157,7 @@ func SetupWithLogger(
 			kb.GET("", handlers.Ticket.KBSearch)
 			kb.GET("/manage", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBManageList)
 		// Fase 2 wiki: koleksi & revisi (kb.manage).
-		kb.GET("/collections", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBCollectionsList)
+		kb.GET("/collections", handlers.Ticket.KBCollectionsList) // nama kategori publik-safe utk grouping Pusat Bantuan
 		kb.POST("/collections", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBCollectionCreate)
 		kb.PUT("/collections/:cid", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBCollectionUpdate)
 		kb.DELETE("/collections/:cid", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBCollectionDelete)
