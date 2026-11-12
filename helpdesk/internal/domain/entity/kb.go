@@ -7,6 +7,8 @@ import "time"
 type KBArticle struct {
 	Base
 	TeamID      string     `json:"team_id" gorm:"type:varchar(36);index;not null"`
+	CollectionID *string    `json="collection_id,omitempty" gorm="type:varchar(36);index"`
+	ParentID     *string    `json="parent_id,omitempty" gorm="type:varchar(36);index"`
 	Slug        string     `json:"slug,omitempty" gorm:"type:varchar(160);index"`
 	Title       string     `json:"title" gorm:"type:varchar(200);not null"`
 	Body        string     `json:"body,omitempty" gorm:"type:text"`
@@ -30,3 +32,26 @@ type KBArticleFeedback struct {
 }
 
 func (KBArticleFeedback) TableName() string { return "kb_article_feedbacks" }
+
+
+// KBCollection - kategori/koleksi artikel KB per tim (fase 2 wiki).
+type KBCollection struct {
+	Base
+	TeamID      string `json="team_id" gorm="type:varchar(36);index;not null"`
+	Name        string `json="name" gorm="type:varchar(120);not null"`
+	Slug        string `json="slug,omitempty" gorm="type:varchar(140);index"`
+	Description string `json="description,omitempty" gorm="type:text"`
+	SortOrder   int    `json="sort_order" gorm="default:0"`
+}
+func (KBCollection) TableName() string { return "kb_collections" }
+
+// KBRevision - snapshot isi artikel tiap update; restore membuat versi baru.
+type KBRevision struct {
+	Base
+	ArticleID string `json="article_id" gorm="type:varchar(36);index;not null"`
+	Version   int    `json="version" gorm="not null"`
+	Title     string `json="title" gorm="type:varchar(200);not null"`
+	Body      string `json="body" gorm="type:text"`
+	EditedBy  string `json="edited_by,omitempty" gorm="type:varchar(36)"`
+}
+func (KBRevision) TableName() string { return "kb_revisions" }

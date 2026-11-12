@@ -156,6 +156,13 @@ func SetupWithLogger(
 		{
 			kb.GET("", handlers.Ticket.KBSearch)
 			kb.GET("/manage", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBManageList)
+		// Fase 2 wiki: koleksi & revisi (kb.manage).
+		kb.GET("/collections", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBCollectionsList)
+		kb.POST("/collections", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBCollectionCreate)
+		kb.PUT("/collections/:cid", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBCollectionUpdate)
+		kb.DELETE("/collections/:cid", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBCollectionDelete)
+		kb.GET("/:id/revisions", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBRevisionsList)
+		kb.POST("/:id/revisions/:version/restore", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBRevisionRestore)
 			kb.POST("", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBCreate)
 			kb.POST("/from-ticket", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.KBFromTicket)
 			kb.GET("/:id", handlers.Ticket.KBGet)

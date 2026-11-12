@@ -77,7 +77,7 @@ func (s *Service) KBGetForViewer(id, userID string) (*entity.KBArticle, error) {
 }
 
 // KBCreate - draft artikel baru milik tim user.
-func (s *Service) KBCreate(userID, title, body string) (*entity.KBArticle, error) {
+func (s *Service) KBCreate(userID, title, body, collectionID, parentID string) (*entity.KBArticle, error) {
 	team, err := s.TeamOf(userID)
 	if err != nil {
 		return nil, err
@@ -85,7 +85,22 @@ func (s *Service) KBCreate(userID, title, body string) (*entity.KBArticle, error
 	if strings.TrimSpace(title) == "" {
 		return nil, fmt.Errorf("%w: judul artikel wajib", ErrValidation)
 	}
-	a := entity.KBArticle{Base: entity.Base{}, TeamID: team.ID, Slug: slugify(title),
+	var colID, parID *string
+	if collectionID != "" {
+		var col entity.KBCollection
+		if err := s.db.Where("id = ? AND team_id = ?", collectionID, team.ID).First(&col).Error; err != nil {
+			return nil, ErrNotFound
+		}
+		colID = &collectionID
+	}
+	if parentID != "" {
+		var par entity.KBArticle
+		if err := s.db.Where("id = ? AND team_id = ?", parentID, team.ID).First(&par).Error; err != nil {
+			return nil, ErrNotFound
+		}
+		parID = &parentID
+	}
+	a := entity.KBArticle{Base: entity.Base{}, TeamID: team.ID, Slug: slugify(title), CollectionID: colID, ParentID: parID,
 		Title: strings.TrimSpace(title), Body: body, Status: "draft", Version: 1, Audience: "{}", CreatedBy: userID}
 	a.Audience = jsonbOr(a.Audience)
 	if err := s.db.Create(&a).Error; err != nil {
@@ -104,7 +119,7 @@ func (s *Service) KBUpdate(userID, id string, fields map[string]interface{}) (*e
 	if err := s.db.Where("id = ? AND team_id = ?", id, team.ID).First(&a).Error; err != nil {
 		return nil, ErrNotFound
 	}
-	allowed := map[string]bool{"title": true, "body": true, "status": true, "audience": true}
+	allowed := map[string]bool{"title": true, "body": true, "status": true, "audience": true, "collection_id": true, "parent_id": true}
 	upd := map[string]interface{}{}
 	for k, v := range fields {
 		if allowed[k] {
@@ -122,9 +137,15 @@ func (s *Service) KBUpdate(userID, id string, fields map[string]interface{}) (*e
 			upd["published_at"] = s.now()
 		}
 	}
-	if v, ok := upd["audience"].(string); ok {
+	for _, fk := range []string{"collection_id", "parent_id"} {
+	if v, ok := upd[fk].(string); ok && v == "" {
+		upd[fk] = nil
+	}
+}
+if v, ok := upd["audience"].(string); ok {
 		upd["audience"] = jsonbOr(v)
 	}
+	s.kbSnapshotRevision(&a, userID)
 	upd["version"] = a.Version + 1
 	if err := s.db.Model(&a).Updates(upd).Error; err != nil {
 		return nil, err

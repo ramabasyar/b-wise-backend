@@ -94,7 +94,7 @@ func main() {
 				&entity.SLAPolicy{}, &entity.BusinessCalendar{},
 				&entity.Ticket{}, &entity.TicketEvent{}, &entity.TicketAttachment{},
 				&entity.TicketApproval{}, &entity.CannedResponse{}, &entity.CSATResponse{}, &entity.NotificationOutbox{},
-				&entity.TicketSequence{}, &entity.KBArticle{}, &entity.KBArticleFeedback{}, &entity.TicketTask{}, &entity.TicketAccessLog{}, &entity.AutomationRule{},
+				&entity.TicketSequence{}, &entity.KBArticle{}, &entity.KBArticleFeedback{}, &entity.KBCollection{}, &entity.KBRevision{}, &entity.TicketTask{}, &entity.TicketAccessLog{}, &entity.AutomationRule{},
 			); err != nil {
 				zapLogger.Info(fmt.Sprintf("[startup] auto-migrate error: %v", err))
 			} else {
