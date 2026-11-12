@@ -23,6 +23,8 @@ type Service struct {
 	clientSecret string
 	secretKey    []byte                  // kunci induk enkripsi rahasia (env, RH-04)
 	holidays     *slasvc.HolidayProvider // hari libur dari Scheduling (opsional)
+	attachDir    string                   // root penyimpanan lampiran (env ATTACHMENT_DIR)
+	attachMaxBytes int64                    // batas ukuran per berkas (env ATTACHMENT_MAX_UPLOAD_MB)
 }
 
 func New(db *gorm.DB) *Service { return &Service{db: db, now: time.Now} }

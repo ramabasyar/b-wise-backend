@@ -103,6 +103,11 @@ func SetupWithLogger(
 			tk.POST("/:id/events", handlers.Ticket.AddEvent)
 			tk.POST("/:id/status", handlers.Ticket.ChangeStatus)
 
+			// Lampiran tiket (viewer tiket: pemohon/anggota tim; otorisasi di service).
+			tk.GET("/:id/attachments", handlers.Ticket.AttachmentsList)
+			tk.POST("/:id/attachments", handlers.Ticket.AttachmentsUpload)
+			tk.GET("/:id/attachments/:attId/download", handlers.Ticket.AttachmentDownload)
+
 			// Petugas - butuh permission helpdesk.tickets.work.
 			tk.POST("/:id/assign", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.Assign)
 			tk.POST("/:id/take", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.Take)

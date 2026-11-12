@@ -527,3 +527,61 @@ func reportRange(c *gin.Context) (time.Time, time.Time) {
 	}
 	return from, to
 }
+
+// AttachmentsUpload — unggah lampiran tiket (multipart, field "files"; viewer tiket).
+func (h *TicketHandler) AttachmentsUpload(c *gin.Context) {
+	id := c.Param("id")
+	uid := ctxUserID(c)
+	form, err := c.MultipartForm()
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	files := form.File["files"]
+	if len(files) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": gin.H{"message": "tidak ada berkas yang diunggah"}})
+		return
+	}
+	saved := make([]ticketsvc.AttachmentMeta, 0, len(files))
+	for _, fh := range files {
+		f, err := fh.Open()
+		if err != nil {
+			fail(c, err)
+			return
+		}
+		meta, err := h.svc.SaveAttachment(id, uid, fh.Filename, fh.Header.Get("Content-Type"), fh.Size, f, 0)
+		f.Close()
+		if err != nil {
+			fail(c, err)
+			return
+		}
+		saved = append(saved, meta)
+	}
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": gin.H{"data": saved}})
+}
+
+// AttachmentsList — metadata lampiran tiket (viewer tiket).
+func (h *TicketHandler) AttachmentsList(c *gin.Context) {
+	list, err := h.svc.ListAttachments(c.Param("id"), ctxUserID(c))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"data": list}})
+}
+
+// AttachmentDownload — unduh berkas lampiran (otorisasi viewer di service).
+func (h *TicketHandler) AttachmentDownload(c *gin.Context) {
+	filename, ctype, f, err := h.svc.OpenAttachment(c.Param("id"), c.Param("attId"), ctxUserID(c))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	defer f.Close()
+	if ctype == "" {
+		ctype = "application/octet-stream"
+	}
+	c.Header("Content-Disposition", "attachment; filename=\""+filename+"\"")
+	c.Header("Content-Type", ctype)
+	http.ServeContent(c.Writer, c.Request, filename, time.Time{}, f)
+}

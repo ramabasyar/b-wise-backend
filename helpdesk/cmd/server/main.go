@@ -148,6 +148,8 @@ func main() {
 	handlers := &router.Handlers{}
 	if db != nil {
 		ticketSvc := ticketsvc.New(db)
+		// Lampiran tiket: root penyimpanan & batas ukuran (env ATTACHMENT_DIR / ATTACHMENT_MAX_UPLOAD_MB).
+		ticketSvc.SetAttachmentLimits(cfg.Attachment.Dir, cfg.Attachment.MaxUploadMB<<20)
 		ticketSvc.SetResolver(cfg.HC.URL, cfg.SSO.URL, cfg.SSO.ServiceClientID, cfg.SSO.ServiceClientSecret)
 		// Integrasi hari libur Scheduling (opsional via SCHEDULING_URL; SLA menghormati libur)
 		if cfg.Scheduling.URL != "" {

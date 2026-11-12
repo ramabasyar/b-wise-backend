@@ -22,6 +22,7 @@ type Config struct {
 	CORS       CORSConfig
 	HC         HCConfig
 	Scheduling SchedulingConfig
+	Attachment AttachmentConfig
 }
 
 // ServerConfig holds server configuration
@@ -37,6 +38,12 @@ type ServerConfig struct {
 // SchedulingConfig — integrasi hari libur (helpdesk SLA).
 type SchedulingConfig struct {
 	URL string `mapstructure:"url"`
+}
+
+// AttachmentConfig — penyimpanan lampiran tiket (filesystem; object key relatif root).
+type AttachmentConfig struct {
+	Dir         string `mapstructure:"dir"`
+	MaxUploadMB int64  `mapstructure:"max_upload_mb"`
 }
 
 // DatabaseConfig holds database configuration
@@ -184,6 +191,10 @@ func setDefaults() {
 	viper.SetDefault("server.shutdown_timeout", 10*time.Second)
 	viper.SetDefault("server.max_body_size", int64(10<<20)) // 10MB
 
+	// Attachment (lampiran tiket)
+	viper.SetDefault("attachment.dir", "data/attachments")
+	viper.SetDefault("attachment.max_upload_mb", int64(10))
+
 	viper.SetDefault("database.host", "localhost")
 	viper.SetDefault("database.port", 5432)
 	viper.SetDefault("database.user", "postgres")
@@ -233,6 +244,10 @@ func bindEnvVars() {
 
 	// Scheduling (hari libur SLA)
 	viper.BindEnv("scheduling.url", "SCHEDULING_URL")
+
+	// Attachment (lampiran tiket)
+	viper.BindEnv("attachment.dir", "ATTACHMENT_DIR")
+	viper.BindEnv("attachment.max_upload_mb", "ATTACHMENT_MAX_UPLOAD_MB")
 
 	// Database
 	viper.BindEnv("database.host", "DB_HOST")
