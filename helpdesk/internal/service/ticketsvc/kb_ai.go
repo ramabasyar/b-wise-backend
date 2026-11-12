@@ -2,6 +2,8 @@ package ticketsvc
 
 import (
 	"fmt"
+	"html"
+	"regexp"
 	"strings"
 
 	"github.com/rama/b-wise/helpdesk/internal/domain/entity"
@@ -30,6 +32,15 @@ func vecToLiteral(v []float32) string {
 }
 
 // KBEmbedPending — embed artikel TERBIT yang belum punya vektor (job boot).
+var kbTagRe = regexp.MustCompile("<[^>]*>")
+
+// kbEmbedText - teks embedding: judul + isi tanpa tag HTML (artikel kini rich-text).
+func kbEmbedText(title, body string) string {
+	txt := kbTagRe.ReplaceAllString(body, " ")
+	txt = html.UnescapeString(txt)
+	return title + ". " + strings.Join(strings.Fields(txt), " ")
+}
+
 func (s *Service) KBEmbedPending() (int, error) {
 	if !kbAI.Enabled() {
 		return 0, nil
@@ -40,7 +51,7 @@ func (s *Service) KBEmbedPending() (int, error) {
 	}
 	n := 0
 	for _, r := range rows {
-		vec, err := kbAI.Embed(r.Title + ". " + r.Body)
+		vec, err := kbAI.Embed(kbEmbedText(r.Title, r.Body))
 		if err != nil {
 			continue
 		}
@@ -60,7 +71,7 @@ func (s *Service) KBEmbedOne(id string) {
 	if err := s.db.Where("id = ? AND status = ?", id, "published").First(&r).Error; err != nil {
 		return
 	}
-	vec, err := kbAI.Embed(r.Title + ". " + r.Body)
+	vec, err := kbAI.Embed(kbEmbedText(r.Title, r.Body))
 	if err != nil {
 		return
 	}
