@@ -361,7 +361,15 @@ func (h *TicketHandler) ApprovalDecide(c *gin.Context) {
 
 // MyServices - layanan tim user utk admin unit (KT-04; termasuk draft).
 func (h *TicketHandler) MyServices(c *gin.Context) {
-	list, err := h.svc.MyServices(ctxUserID(c))
+	var (
+		list []entity.Service
+		err  error
+	)
+	if h.isSuper(ctxUserID(c)) {
+		list, err = h.svc.AllServices()
+	} else {
+		list, err = h.svc.MyServices(ctxUserID(c))
+	}
 	if err != nil {
 		fail(c, err)
 		return
@@ -492,7 +500,13 @@ func (h *TicketHandler) SubmitCSAT(c *gin.Context) {
 // ReportSummary - dashboard unit (LP-01).
 func (h *TicketHandler) ReportSummary(c *gin.Context) {
 	from, to := reportRange(c)
-	r, err := h.svc.ReportSummaryFor(ctxUserID(c), from, to)
+	var r *ticketsvc.ReportSummary
+	var err error
+	if h.isSuper(ctxUserID(c)) {
+		r, err = h.svc.ReportSummaryAll(from, to)
+	} else {
+		r, err = h.svc.ReportSummaryFor(ctxUserID(c), from, to)
+	}
 	if err != nil {
 		fail(c, err)
 		return

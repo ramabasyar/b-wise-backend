@@ -12,6 +12,13 @@ import (
 // ===== Basis Pengetahuan (KB, blueprint 6.9) =====
 
 // KBListTeam - seluruh artikel tim user, termasuk draft (KT-09).
+// KBListAll - seluruh artikel semua tim termasuk draft (mode super lintas tim).
+func (s *Service) KBListAll() ([]entity.KBArticle, error) {
+	var list []entity.KBArticle
+	err := s.db.Order("updated_at DESC").Find(&list).Error
+	return list, err
+}
+
 func (s *Service) KBListTeam(userID string) ([]entity.KBArticle, error) {
 	team, err := s.TeamOf(userID)
 	if err != nil {

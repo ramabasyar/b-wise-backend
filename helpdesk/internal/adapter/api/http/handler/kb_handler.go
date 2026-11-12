@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rama/b-wise/helpdesk/internal/domain/entity"
 )
 
 // KBSearch - cari artikel terbit; q kosong = terbaru (KB-02; semua akun login).
@@ -28,7 +29,15 @@ func (h *TicketHandler) KBGet(c *gin.Context) {
 
 // KBManageList - artikel tim user termasuk draft (KT-09).
 func (h *TicketHandler) KBManageList(c *gin.Context) {
-	list, err := h.svc.KBListTeam(ctxUserID(c))
+	var (
+		list []entity.KBArticle
+		err  error
+	)
+	if h.isSuper(ctxUserID(c)) {
+		list, err = h.svc.KBListAll()
+	} else {
+		list, err = h.svc.KBListTeam(ctxUserID(c))
+	}
 	if err != nil {
 		fail(c, err)
 		return

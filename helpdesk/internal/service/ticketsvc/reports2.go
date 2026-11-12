@@ -91,7 +91,11 @@ type ServicePerformance struct {
 
 func (s *Service) ServicesPerformance(teamID string, from, to time.Time) ([]ServicePerformance, error) {
 	var svcs []entity.Service
-	if err := s.db.Where("team_id = ?", teamID).Find(&svcs).Error; err != nil {
+	q := s.db
+	if teamID != "" {
+		q = q.Where("team_id = ?", teamID)
+	}
+	if err := q.Find(&svcs).Error; err != nil {
 		return nil, err
 	}
 	policyTargets := map[string]float64{}

@@ -78,6 +78,29 @@ func (s *Service) ReportSummaryFor(userID string, from, to time.Time) (*ReportSu
 	return r, nil
 }
 
+// ReportSummaryAll - ringkasan kinerja LINTAS semua tim (mode super).
+func (s *Service) ReportSummaryAll(from, to time.Time) (*ReportSummary, error) {
+	r := &ReportSummary{}
+	s.db.Model(&entity.Ticket{}).Where("created_at >= ? AND created_at <= ?", from, to).Count(&r.Total)
+	s.db.Model(&entity.Ticket{}).Where("created_at >= ? AND created_at <= ? AND status IN ?", from, to, []string{ticketstate.Baru, ticketstate.MenungguApproval, ticketstate.Terbuka, ticketstate.Dikerjakan, ticketstate.MenungguPihakLain}).Count(&r.Open)
+	s.db.Model(&entity.Ticket{}).Where("created_at >= ? AND created_at <= ? AND status = ?", from, to, ticketstate.Selesai).Count(&r.Selesai)
+	r.SLATotal = r.Selesai
+	s.db.Model(&entity.Ticket{}).Where("created_at >= ? AND created_at <= ? AND status = ? AND resolved_at <= due_resolution_at", from, to, ticketstate.Selesai).Count(&r.SLAOK)
+	type avgRow struct{ Min *float64 }
+	var ar avgRow
+	s.db.Model(&entity.Ticket{}).Select("AVG(EXTRACT(EPOCH FROM (first_response_at - created_at))/60) AS min").Where("first_response_at IS NOT NULL AND created_at >= ? AND created_at <= ?", from, to).Scan(&ar)
+	if ar.Min != nil {
+		r.AvgFirstResponseMin = int64(*ar.Min)
+	}
+	type csatRow struct{ Avg *float64 }
+	var cr csatRow
+	s.db.Raw("SELECT AVG((reliability+responsiveness+assurance+empathy+tangible)/5.0) AS avg FROM csat_responses cr JOIN tickets t ON t.id = cr.ticket_id WHERE cr.submitted_at >= ? AND cr.submitted_at <= ?", from, to).Scan(&cr)
+	if cr.Avg != nil {
+		r.AvgCSAT = *cr.Avg
+	}
+	return r, nil
+}
+
 // Konstanta karakter CSV via kode rune - bebas masalah escaping.
 const (
 	DQ = string(rune(34))

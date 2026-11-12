@@ -42,12 +42,16 @@ func (h *TicketHandler) ReportCSATLKPS(c *gin.Context) {
 // ReportServicesPerformance - standar vs realisasi per layanan tim user (LP-05).
 func (h *TicketHandler) ReportServicesPerformance(c *gin.Context) {
 	from, to := reportRange(c)
-	team, err := h.svc.TeamOf(ctxUserID(c))
-	if err != nil {
-		fail(c, err)
-		return
+	teamID := ""
+	if !h.isSuper(ctxUserID(c)) {
+		team, err := h.svc.TeamOf(ctxUserID(c))
+		if err != nil {
+			fail(c, err)
+			return
+		}
+		teamID = team.ID
 	}
-	rows, err := h.svc.ServicesPerformance(team.ID, from, to)
+	rows, err := h.svc.ServicesPerformance(teamID, from, to)
 	if err != nil {
 		fail(c, err)
 		return

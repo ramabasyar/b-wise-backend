@@ -9,6 +9,13 @@ import (
 
 // ===== Layanan (KT-04) =====
 
+// AllServices - seluruh layanan semua tim (mode super; termasuk draft).
+func (s *Service) AllServices() ([]entity.Service, error) {
+	var list []entity.Service
+	err := s.db.Order("name ASC").Find(&list).Error
+	return list, err
+}
+
 // MyServices - seluruh layanan tim user (termasuk draft).
 func (s *Service) MyServices(userID string) ([]entity.Service, error) {
 	team, err := s.TeamOf(userID)
