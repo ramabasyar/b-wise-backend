@@ -84,6 +84,9 @@ func SetupWithLogger(
 
 	// API routes (protected by JWKS auth)
 
+	// Gambar KB publik by id (fase 3): tag <img> browser tidak membawa token -
+	r.GET("/api/v1/kb/images/:iid", handlers.Ticket.KBImageServe)
+
 	api := r.Group("/api")
 	api.Use(jwksAuth.RequireUser())
 
@@ -163,6 +166,7 @@ func SetupWithLogger(
 		kb.DELETE("/collections/:cid", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBCollectionDelete)
 		kb.GET("/:id/revisions", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBRevisionsList)
 		kb.POST("/:id/revisions/:version/restore", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBRevisionRestore)
+		kb.POST("/images", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBImageUpload)
 			kb.POST("", permCheck.RequirePermission("helpdesk.kb.manage"), handlers.Ticket.KBCreate)
 			kb.POST("/from-ticket", permCheck.RequirePermission("helpdesk.tickets.work"), handlers.Ticket.KBFromTicket)
 			kb.GET("/:id", handlers.Ticket.KBGet)

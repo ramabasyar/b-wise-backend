@@ -13,6 +13,7 @@ type KBArticle struct {
 	Title       string     `json:"title" gorm:"type:varchar(200);not null"`
 	Body        string     `json:"body,omitempty" gorm:"type:text"`
 	Status      string     `json:"status" gorm:"type:varchar(20);default:'draft';index"`
+	Visibility  string     `json:"visibility" gorm="type:varchar(20);default:""public"";index"`
 	Version     int        `json:"version" gorm:"default:1"`
 	Audience    string     `json:"audience,omitempty" gorm:"type:jsonb"`
 	Helpful     int        `json:"helpful" gorm:"default:0"`
@@ -55,3 +56,14 @@ type KBRevision struct {
 	EditedBy  string `json="edited_by,omitempty" gorm="type:varchar(36)"`
 }
 func (KBRevision) TableName() string { return "kb_revisions" }
+
+// KBImage - gambar artikel KB (fase 3); object key relatif root attachment.
+type KBImage struct {
+	Base
+	TeamID    string `json="team_id" gorm="type:varchar(36);index;not null"`
+	ObjectKey string `json="-" gorm="type:varchar(300);not null"`
+	Filename  string `json="filename" gorm="type:varchar(255);not null"`
+	Mime      string `json="mime,omitempty" gorm="type:varchar(100)"`
+	Size      int64  `json="size" gorm="default:0"`
+}
+func (KBImage) TableName() string { return "kb_images" }

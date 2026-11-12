@@ -38,7 +38,7 @@ func (s *Service) KBSearch(q, teamCode string) ([]entity.KBArticle, error) {
 	}
 	qs := strings.TrimSpace(q)
 	scope := func() *gorm.DB {
-		db := s.db.Model(&entity.KBArticle{}).Where("status = ?", "published")
+		db := s.db.Model(&entity.KBArticle{}).Where("status = ?", "published").Where("visibility = ?", "public")
 		if teamCode != "" {
 			db = db.Where("team_id = (SELECT id FROM teams WHERE code = ? AND is_active LIMIT 1)", teamCode)
 		}
@@ -70,14 +70,14 @@ func (s *Service) KBGetForViewer(id, userID string) (*entity.KBArticle, error) {
 	if err := s.db.Where("id = ?", id).First(&a).Error; err != nil {
 		return nil, ErrNotFound
 	}
-	if a.Status != "published" && !s.IsMember(a.TeamID, userID) {
+	if (a.Status != "published" || a.Visibility == "internal") && !s.IsMember(a.TeamID, userID) {
 		return nil, ErrForbidden
 	}
 	return &a, nil
 }
 
 // KBCreate - draft artikel baru milik tim user.
-func (s *Service) KBCreate(userID, title, body, collectionID, parentID string) (*entity.KBArticle, error) {
+func (s *Service) KBCreate(userID, title, body, collectionID, parentID, visibility string) (*entity.KBArticle, error) {
 	team, err := s.TeamOf(userID)
 	if err != nil {
 		return nil, err
@@ -101,7 +101,7 @@ func (s *Service) KBCreate(userID, title, body, collectionID, parentID string) (
 		parID = &parentID
 	}
 	a := entity.KBArticle{Base: entity.Base{}, TeamID: team.ID, Slug: slugify(title), CollectionID: colID, ParentID: parID,
-		Title: strings.TrimSpace(title), Body: body, Status: "draft", Version: 1, Audience: "{}", CreatedBy: userID}
+		Title: strings.TrimSpace(title), Body: body, Status: "draft", Visibility: visOrDefault(visibility), Version: 1, Audience: "{}", CreatedBy: userID}
 	a.Audience = jsonbOr(a.Audience)
 	if err := s.db.Create(&a).Error; err != nil {
 		return nil, err
@@ -119,7 +119,7 @@ func (s *Service) KBUpdate(userID, id string, fields map[string]interface{}) (*e
 	if err := s.db.Where("id = ? AND team_id = ?", id, team.ID).First(&a).Error; err != nil {
 		return nil, ErrNotFound
 	}
-	allowed := map[string]bool{"title": true, "body": true, "status": true, "audience": true, "collection_id": true, "parent_id": true}
+	allowed := map[string]bool{"title": true, "body": true, "status": true, "audience": true, "collection_id": true, "parent_id": true, "visibility": true}
 	upd := map[string]interface{}{}
 	for k, v := range fields {
 		if allowed[k] {
@@ -142,7 +142,10 @@ func (s *Service) KBUpdate(userID, id string, fields map[string]interface{}) (*e
 		upd[fk] = nil
 	}
 }
-if v, ok := upd["audience"].(string); ok {
+if v, ok := upd["visibility"].(string); ok {
+		upd["visibility"] = visOrDefault(v)
+	}
+	if v, ok := upd["audience"].(string); ok {
 		upd["audience"] = jsonbOr(v)
 	}
 	s.kbSnapshotRevision(&a, userID)
@@ -212,4 +215,11 @@ func (s *Service) KBFromTicket(userID, ticketID, eventID, title string) (*entity
 	}
 	_ = s.AddSystemEvent(ticketID, "jawaban tiket dijadikan draft artikel KB", ev.ID)
 	return &a, nil
+}
+
+func visOrDefault(v string) string {
+	if v == "internal" {
+		return "internal"
+	}
+	return "public"
 }

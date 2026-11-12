@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"time"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -54,12 +55,13 @@ func (h *TicketHandler) KBCreate(c *gin.Context) {
 		Body  string `json:"body"`
 		CollectionID string `json:"collection_id"`
 		ParentID     string `json:"parent_id"`
+		Visibility   string `json:"visibility"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, err)
 		return
 	}
-	a, err := h.svc.KBCreate(ctxUserID(c), req.Title, req.Body, req.CollectionID, req.ParentID)
+	a, err := h.svc.KBCreate(ctxUserID(c), req.Title, req.Body, req.CollectionID, req.ParentID, req.Visibility)
 	if err != nil {
 		fail(c, err)
 		return
@@ -172,4 +174,46 @@ func (h *TicketHandler) KBRevisionRestore(c *gin.Context) {
 	a, err := h.svc.KBRestoreRevision(ctxUserID(c), c.Param("id"), ver)
 	if err != nil { fail(c, err); return }
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": a})
+}
+
+// KBImageUpload - ungguh gambar artikel (multipart field 'file').
+
+func (h *TicketHandler) KBImageUpload(c *gin.Context) {
+
+	fh, err := c.FormFile("file")
+
+	if err != nil { fail(c, fmt.Errorf("%w: berkas gambar wajib", ticketsvc.ErrValidation)); return }
+
+	f, err := fh.Open()
+
+	if err != nil { fail(c, err); return }
+
+	defer f.Close()
+
+	img, err := h.svc.KBImageUpload(ctxUserID(c), fh.Filename, fh.Header.Get("Content-Type"), fh.Size, f)
+
+	if err != nil { fail(c, err); return }
+
+	c.JSON(http.StatusCreated, gin.H{"success": true, "data": gin.H{"id": img.ID, "url": "/api/v1/kb/images/" + img.ID}})
+
+}
+
+// KBImageServe - tampilkan gambar (publik by id, utk tag <img> di artikel).
+
+func (h *TicketHandler) KBImageServe(c *gin.Context) {
+
+	filename, ct, f, err := h.svc.KBImageServe(c.Param("iid"))
+
+	if err != nil { fail(c, err); return }
+
+	defer f.Close()
+
+	c.Header("Content-Disposition", fmt.Sprintf("inline; filename=%c%s%c", '"', filename, '"'))
+
+	c.Header("Content-Type", ct)
+
+	c.Header("Cache-Control", "public, max-age=86400")
+
+	http.ServeContent(c.Writer, c.Request, filename, time.Time{}, f)
+
 }

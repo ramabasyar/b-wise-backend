@@ -2,6 +2,9 @@ package ticketsvc
 
 import (
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/rama/b-wise/helpdesk/internal/domain/entity"
@@ -135,4 +138,84 @@ func (s *Service) KBRestoreRevision(userID, articleID string, version int) (*ent
 	}
 	go s.KBEmbedOne(a.ID)
 	return &a, nil
+}
+
+// KBImageUpload - simpan gambar artikel (jpg/png/gif/webp, maks 5MB); kembalikan URL publik.
+
+var kbImageMime = map[string]bool{"image/jpeg": true, "image/png": true, "image/gif": true, "image/webp": true}
+
+func (s *Service) KBImageUpload(userID, filename, contentType string, size int64, r io.Reader) (*entity.KBImage, error) {
+
+	team, err := s.TeamOf(userID)
+
+	if err != nil { return nil, err }
+
+	if size <= 0 || size > 5<<20 {
+
+		return nil, fmt.Errorf("%w: ukuran gambar 1KB-5MB", ErrValidation)
+
+	}
+
+	if !kbImageMime[contentType] {
+
+		return nil, fmt.Errorf("%w: hanya JPG/PNG/GIF/WEBP", ErrValidation)
+
+	}
+
+	buf, err := io.ReadAll(io.LimitReader(r, 5<<20+1))
+
+	if err != nil { return nil, err }
+
+	if int64(len(buf)) > 5<<20 {
+
+		return nil, fmt.Errorf("%w: ukuran gambar 1KB-5MB", ErrValidation)
+
+	}
+
+	img := entity.KBImage{TeamID: team.ID, ObjectKey: "", Filename: filename, Mime: contentType, Size: int64(len(buf))}
+
+	if err := s.db.Create(&img).Error; err != nil { return nil, err }
+
+	objectKey := "kb/" + img.ID + ".bin"
+
+	dst := filepath.Join(s.attachmentDir(), objectKey)
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil { return nil, err }
+
+	if err := os.WriteFile(dst, buf, 0o640); err != nil { return nil, err }
+
+	img.ObjectKey = objectKey
+
+	if err := s.db.Model(&img).Update("object_key", objectKey).Error; err != nil { return nil, err }
+
+	return &img, nil
+
+}
+
+// KBImageServe - stream gambar utk ditampilkan di artikel (publik by id).
+
+func (s *Service) KBImageServe(id string) (string, string, io.ReadSeekCloser, error) {
+
+	var img entity.KBImage
+
+	if err := s.db.Where("id = ?", id).First(&img).Error; err != nil {
+
+		return "", "", nil, ErrNotFound
+
+	}
+
+	f, err := os.Open(filepath.Join(s.attachmentDir(), img.ObjectKey))
+
+	if err != nil {
+
+		return "", "", nil, fmt.Errorf("gambar tidak ada di penyimpanan")
+
+	}
+
+	ct := img.Mime
+
+	if ct == "" { ct = "application/octet-stream" }
+
+	return img.Filename, ct, f, nil
+
 }
