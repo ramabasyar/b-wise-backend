@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	entity "github.com/rama/b-wise/iku/internal/domain/entity"
@@ -63,8 +64,22 @@ func (s *AchievementService) List(f AchievementFilter) ([]entity.AchievementReco
 		q = q.Where("status = ?", f.Status)
 	}
 	var list []entity.AchievementRecord
-	return list, q.Preload("Indicator").Preload("Period").Preload("Evidences").
+	err := q.Preload("Indicator").Preload("Period").Preload("Evidences").
 		Order("updated_at DESC").Limit(500).Find(&list).Error
+	if err != nil {
+		return nil, err
+	}
+	// sanitasi baris lama bermasalah: NaN/Inf ditolak json.Marshal dan meracuni
+	// SELURUH respons list capaian (bug QA 12-13 Nov: tabel capaian kosong).
+	for i := range list {
+		if math.IsNaN(list[i].CalculatedValue) || math.IsInf(list[i].CalculatedValue, 0) {
+			list[i].CalculatedValue = 0
+		}
+		if list[i].AchievementPct != nil && (math.IsNaN(*list[i].AchievementPct) || math.IsInf(*list[i].AchievementPct, 0)) {
+			list[i].AchievementPct = nil
+		}
+	}
+	return list, nil
 }
 
 func (s *AchievementService) Get(id string) (*entity.AchievementRecord, []entity.WorkflowLog, error) {
@@ -182,6 +197,11 @@ func (s *AchievementService) Upsert(in UpsertAchievementInput, actor string) (*e
 
 	if err := s.recalc(&a); err != nil {
 		return nil, err
+	}
+	// Guard: hasil formula NaN/Infinity (mis. pembagian nol) TIDAK boleh tersimpan —
+	// json.Marshal menolak NaN sehingga satu baris saja membuat seluruh list capaian gagal dimuat.
+	if math.IsNaN(a.CalculatedValue) || math.IsInf(a.CalculatedValue, 0) {
+		return nil, fmt.Errorf("%w: formula menghasilkan nilai tidak valid (NaN/Infinity) — periksa variabel masukan atau rumus indikator", ErrValidation)
 	}
 
 	err = s.db.Transaction(func(tx *gorm.DB) error {
