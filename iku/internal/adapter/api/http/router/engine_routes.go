@@ -110,7 +110,7 @@ func (h *Handlers) mountEngineRoutes(api *gin.RouterGroup, jwksAuth *middleware.
 	units := api.Group("/units")
 	units.Use(jwksAuth.RequireAuth(), permCheck.CheckAccess())
 	{
-		units.GET("", permCheck.RequirePermission("indicators.read"), h.Engine.ListUnits)
+		units.GET("", h.Engine.ListUnits) // lookup referensi — cukup auth + service access (bug QA: dashboard reviewer/operator)
 	}
 }
 

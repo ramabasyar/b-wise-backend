@@ -152,9 +152,9 @@ func SetupWithLogger(
 	periods := api.Group("/periods")
 	periods.Use(jwksAuth.RequireAuth(), permCheck.CheckAccess())
 	{
-		periods.GET("", permCheck.RequirePermission("indicators.read"), h.periodList)
+		periods.GET("", h.periodList) // lookup referensi — cukup auth + service access (bug QA: dashboard reviewer/operator)
 		periods.POST("", permCheck.RequirePermission("periods.write"), h.Iku.CreatePeriod)
-		periods.GET("/:id", permCheck.RequirePermission("indicators.read"), h.periodGet)
+		periods.GET("/:id", h.periodGet) // lookup referensi
 		periods.POST("/:id/open", permCheck.RequirePermission("periods.write"), h.periodOpen)
 		// tutup: reviewer BPM (achievements.workflow) ATAU admin (periods.write) — hybrid
 		periods.POST("/:id/close", permCheck.RequireAnyPermission("periods.write", "achievements.workflow"), h.periodClose)
