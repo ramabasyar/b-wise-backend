@@ -1,12 +1,16 @@
 package ticketsvc
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/rama/b-wise/helpdesk/internal/adapter/storage"
 	"github.com/rama/b-wise/helpdesk/internal/domain/entity"
 )
 
@@ -140,6 +144,16 @@ func (s *Service) KBRestoreRevision(userID, articleID string, version int) (*ent
 	return &a, nil
 }
 
+// SetKBStorage - pasang object storage MinIO utk gambar KB (nil = filesystem).
+func (s *Service) SetKBStorage(m *storage.MinIO) { s.kbStore = m }
+
+func ctSafe(ct string) string {
+	if ct == "" {
+		return "application/octet-stream"
+	}
+	return ct
+}
+
 // KBImageUpload - simpan gambar artikel (jpg/png/gif/webp, maks 5MB); kembalikan URL publik.
 
 var kbImageMime = map[string]bool{"image/jpeg": true, "image/png": true, "image/gif": true, "image/webp": true}
@@ -178,11 +192,18 @@ func (s *Service) KBImageUpload(userID, filename, contentType string, size int64
 
 	objectKey := "kb/" + img.ID + ".bin"
 
-	dst := filepath.Join(s.attachmentDir(), objectKey)
-
-	if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil { return nil, err }
-
-	if err := os.WriteFile(dst, buf, 0o640); err != nil { return nil, err }
+	if s.kbStore != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := s.kbStore.Put(ctx, objectKey, bytes.NewReader(buf), int64(len(buf)), contentType); err != nil {
+			_ = s.db.Delete(&img).Error
+			return nil, err
+		}
+	} else {
+		dst := filepath.Join(s.attachmentDir(), objectKey)
+		if err := os.MkdirAll(filepath.Dir(dst), 0o750); err != nil { return nil, err }
+		if err := os.WriteFile(dst, buf, 0o640); err != nil { return nil, err }
+	}
 
 	img.ObjectKey = objectKey
 
@@ -204,6 +225,16 @@ func (s *Service) KBImageServe(id string) (string, string, io.ReadSeekCloser, er
 
 	}
 
+	if s.kbStore != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		obj, gerr := s.kbStore.Get(ctx, img.ObjectKey)
+		cancel()
+		if gerr == nil {
+			return img.Filename, ctSafe(img.Mime), obj, nil
+		}
+		// fallback filesystem utk baris lama pra-MinIO
+	}
+
 	f, err := os.Open(filepath.Join(s.attachmentDir(), img.ObjectKey))
 
 	if err != nil {
@@ -212,10 +243,6 @@ func (s *Service) KBImageServe(id string) (string, string, io.ReadSeekCloser, er
 
 	}
 
-	ct := img.Mime
-
-	if ct == "" { ct = "application/octet-stream" }
-
-	return img.Filename, ct, f, nil
+	return img.Filename, ctSafe(img.Mime), f, nil
 
 }

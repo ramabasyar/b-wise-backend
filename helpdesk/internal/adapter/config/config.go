@@ -23,6 +23,7 @@ type Config struct {
 	HC         HCConfig
 	Scheduling SchedulingConfig
 	Attachment AttachmentConfig
+	MinIO      MinIOConfig
 }
 
 // ServerConfig holds server configuration
@@ -38,6 +39,15 @@ type ServerConfig struct {
 // SchedulingConfig — integrasi hari libur (helpdesk SLA).
 type SchedulingConfig struct {
 	URL string `mapstructure:"url"`
+}
+
+// MinIOConfig — object storage gambar KB (hanoman staging); kosong = fallback filesystem.
+type MinIOConfig struct {
+	Endpoint  string `mapstructure:"endpoint"`
+	AccessKey string `mapstructure:"access_key"`
+	SecretKey string `mapstructure:"secret_key"`
+	Bucket    string `mapstructure:"bucket"`
+	UseSSL    bool   `mapstructure:"use_ssl"`
 }
 
 // AttachmentConfig — penyimpanan lampiran tiket (filesystem; object key relatif root).
@@ -194,6 +204,7 @@ func setDefaults() {
 	// Attachment (lampiran tiket)
 	viper.SetDefault("attachment.dir", "data/attachments")
 	viper.SetDefault("attachment.max_upload_mb", int64(10))
+	viper.SetDefault("minio.bucket", "helpdesk-kb")
 
 	viper.SetDefault("database.host", "localhost")
 	viper.SetDefault("database.port", 5432)
@@ -248,6 +259,13 @@ func bindEnvVars() {
 	// Attachment (lampiran tiket)
 	viper.BindEnv("attachment.dir", "ATTACHMENT_DIR")
 	viper.BindEnv("attachment.max_upload_mb", "ATTACHMENT_MAX_UPLOAD_MB")
+
+	// MinIO (gambar KB — hanoman)
+	viper.BindEnv("minio.endpoint", "MINIO_ENDPOINT")
+	viper.BindEnv("minio.access_key", "MINIO_ACCESS_KEY")
+	viper.BindEnv("minio.secret_key", "MINIO_SECRET_KEY")
+	viper.BindEnv("minio.bucket", "MINIO_BUCKET")
+	viper.BindEnv("minio.use_ssl", "MINIO_USE_SSL")
 
 	// Database
 	viper.BindEnv("database.host", "DB_HOST")

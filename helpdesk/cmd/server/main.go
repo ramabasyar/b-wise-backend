@@ -16,6 +16,7 @@ import (
 	"github.com/rama/b-wise/helpdesk/internal/adapter/api/http/router"
 	"github.com/rama/b-wise/helpdesk/internal/adapter/cache"
 	"github.com/rama/b-wise/helpdesk/internal/adapter/config"
+	"github.com/rama/b-wise/helpdesk/internal/adapter/storage"
 	"github.com/rama/b-wise/helpdesk/internal/adapter/database"
 	"github.com/rama/b-wise/helpdesk/internal/adapter/logger"
 	"github.com/rama/b-wise/helpdesk/internal/domain/entity"
@@ -150,6 +151,28 @@ func main() {
 		ticketSvc := ticketsvc.New(db)
 		// Lampiran tiket: root penyimpanan & batas ukuran (env ATTACHMENT_DIR / ATTACHMENT_MAX_UPLOAD_MB).
 		ticketSvc.SetAttachmentLimits(cfg.Attachment.Dir, cfg.Attachment.MaxUploadMB<<20)
+		// Gambar KB: object storage MinIO (hanoman); endpoint kosong = filesystem.
+		if cfg.MinIO.Endpoint != "" {
+			kbStore, err := storage.New(storage.Config{
+				Endpoint:  cfg.MinIO.Endpoint,
+				AccessKey: cfg.MinIO.AccessKey,
+				SecretKey: cfg.MinIO.SecretKey,
+				Bucket:    cfg.MinIO.Bucket,
+				UseSSL:    cfg.MinIO.UseSSL,
+			})
+			if err != nil {
+				zapLogger.Warn("[startup] minio init gagal; gambar KB memakai filesystem: " + err.Error())
+			} else {
+				bctx, bcancel := context.WithTimeout(context.Background(), 10*time.Second)
+				if berr := kbStore.EnsureBucket(bctx); berr != nil {
+					zapLogger.Warn("[startup] minio ensure-bucket gagal; gambar KB memakai filesystem: " + berr.Error())
+				} else {
+					ticketSvc.SetKBStorage(kbStore)
+					zapLogger.Info("[startup] gambar KB: MinIO aktif bucket=" + cfg.MinIO.Bucket)
+				}
+				bcancel()
+			}
+		}
 		ticketSvc.SetResolver(cfg.HC.URL, cfg.SSO.URL, cfg.SSO.ServiceClientID, cfg.SSO.ServiceClientSecret)
 		// Integrasi hari libur Scheduling (opsional via SCHEDULING_URL; SLA menghormati libur)
 		if cfg.Scheduling.URL != "" {

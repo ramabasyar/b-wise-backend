@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/rama/b-wise/helpdesk/internal/adapter/storage"
 	"github.com/rama/b-wise/helpdesk/internal/domain/entity"
 	"github.com/rama/b-wise/helpdesk/internal/domain/ticketstate"
 	"github.com/rama/b-wise/helpdesk/internal/service/slasvc"
@@ -25,6 +26,7 @@ type Service struct {
 	holidays     *slasvc.HolidayProvider // hari libur dari Scheduling (opsional)
 	attachDir    string                   // root penyimpanan lampiran (env ATTACHMENT_DIR)
 	attachMaxBytes int64                    // batas ukuran per berkas (env ATTACHMENT_MAX_UPLOAD_MB)
+	kbStore       *storage.MinIO           // object storage gambar KB (nil = filesystem)
 }
 
 func New(db *gorm.DB) *Service { return &Service{db: db, now: time.Now} }
