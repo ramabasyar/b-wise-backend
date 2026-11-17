@@ -161,6 +161,15 @@ func SetupWithLogger(
 		periods.POST("/:id/rollup", permCheck.RequirePermission("periods.write"), h.periodRollup)
 	}
 
+	// ============ SETUP STATUS (panduan setup — lookup agregat, opsional) ============
+	if h.Setup != nil {
+		setup := api.Group("/setup-status")
+		setup.Use(jwksAuth.RequireAuth(), permCheck.CheckAccess())
+		{
+			setup.GET("", h.Setup.GetStatus)
+		}
+	}
+
 	return r
 }
 
@@ -181,4 +190,5 @@ type Handlers struct {
 	Notification *handler.NotificationHandler
 	Export       *handler.ExportHandler
 	Metrics      *handler.MetricsHandler
+	Setup        *handler.SetupHandler
 }

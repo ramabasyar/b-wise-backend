@@ -66,6 +66,7 @@ func main() {
 	var periodSvc *domainsvc.PeriodService
 	var periodHandler *handler.PeriodHandler
 	var comparisonHandler *handler.ComparisonHandler
+	var setupHandler *handler.SetupHandler
 	var stopPeriodScheduler func()
 
 	// Initialize logger
@@ -162,6 +163,7 @@ func main() {
 				// F9: period lifecycle service + handler
 				periodSvc = domainsvc.NewPeriodService(db, notifier)
 				periodHandler = handler.NewPeriodHandler(periodSvc)
+				setupHandler = handler.NewSetupHandler(domainsvc.NewSetupService(db))
 				yoySvc := domainsvc.NewComparisonService(db)
 				comparisonHandler = handler.NewComparisonHandler(yoySvc)
 				exportSvc := domainsvc.NewExportService(db, dashSvc, yoySvc)
@@ -192,7 +194,7 @@ func main() {
 	// ===== Initialize handlers =====
 	handlers := &router.Handlers{Iku: ikuHandler, Engine: engineHandler, Achievement: achHandler, Broker: brokerHandler,
 		Compliance: complianceHandler, Notification: notificationHandler, Export: exportHandler, Metrics: metricsHandler,
-		Period: periodHandler, Comparison: comparisonHandler}
+		Period: periodHandler, Comparison: comparisonHandler, Setup: setupHandler}
 
 	// ===== Setup router =====
 	zapGlobal := zapLogger.SugaredLogger.Desugar()
