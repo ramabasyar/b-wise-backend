@@ -63,10 +63,10 @@ func (s *DashboardService) LatestPeriod(out *entity.Period) error {
 	row := s.db.Raw(`SELECT ar.period_id FROM achievement_records ar
 		JOIN periods p ON p.id = ar.period_id
 		ORDER BY CASE WHEN p.status IN ('open','grace') THEN 1 ELSE 0 END DESC,
-			CASE WHEN p.type = 'annual' THEN 1 ELSE 0 END DESC,
+			CASE WHEN p.type = 'quarterly' THEN 2 WHEN p.type = 'semester' THEN 1 ELSE 0 END DESC,
 			CASE ar.status
 			WHEN 'published' THEN 5 WHEN 'approved' THEN 4 WHEN 'reviewed' THEN 3
-			WHEN 'submitted' THEN 2 ELSE 1 END DESC, p.start_date DESC, ar.updated_at DESC
+			WHEN 'submitted' THEN 2 ELSE 1 END DESC, ar.updated_at DESC, p.start_date DESC
 		LIMIT 1`).Row()
 	if err := row.Scan(&withData); err == nil && withData != "" {
 		if err := s.db.Where("id = ?", withData).First(out).Error; err == nil {
