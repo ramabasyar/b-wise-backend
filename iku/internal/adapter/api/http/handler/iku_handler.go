@@ -58,6 +58,12 @@ func (h *IkuHandler) CreateRegulation(c *gin.Context) {
 
 // ==================== INDICATORS ====================
 
+// IndicatorDTO — indikator + info turunan untuk UI.
+type IndicatorDTO struct {
+	entity.IndicatorDefinition
+	HasActiveFormula bool `json:"has_active_formula"` // true bila ada versi formula aktif (siap input capaian)
+}
+
 // ListIndicators GET /api/indicators?reg_version_id=&period_type=&nature=&active_only=
 func (h *IkuHandler) ListIndicators(c *gin.Context) {
 	f := service.IndicatorFilter{
@@ -71,8 +77,20 @@ func (h *IkuHandler) ListIndicators(c *gin.Context) {
 		errStatus(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": list,
-		"meta": gin.H{"total": len(list)}})
+	ids := make([]string, 0, len(list))
+	for _, d := range list {
+		ids = append(ids, d.ID)
+	}
+	activeMap, err2 := h.svc.ActiveFormulaIndicatorIDs(ids)
+	if err2 != nil {
+		activeMap = map[string]bool{} // degrade: field false semua, list tetap tampil
+	}
+	out := make([]IndicatorDTO, 0, len(list))
+	for _, d := range list {
+		out = append(out, IndicatorDTO{IndicatorDefinition: d, HasActiveFormula: activeMap[d.ID]})
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": out,
+		"meta": gin.H{"total": len(out)}})
 }
 
 // GetIndicator GET /api/indicators/:id

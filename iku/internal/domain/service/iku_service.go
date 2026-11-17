@@ -69,6 +69,25 @@ func (s *IkuService) ListIndicators(f IndicatorFilter) ([]entity.IndicatorDefini
 	return list, q.Preload("RegVersion").Order("sort_order ASC, iku_code ASC").Find(&list).Error
 }
 
+// ActiveFormulaIndicatorIDs mengembalikan set indicator_id yang memiliki versi formula aktif
+// (untuk menandai kesiapan input capaian di UI).
+func (s *IkuService) ActiveFormulaIndicatorIDs(ids []string) (map[string]bool, error) {
+	res := map[string]bool{}
+	if len(ids) == 0 {
+		return res, nil
+	}
+	var rows []string
+	if err := s.db.Model(&entity.FormulaVersion{}).
+		Where("indicator_id IN ? AND status = ?", ids, "active").
+		Pluck("DISTINCT indicator_id", &rows).Error; err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		res[r] = true
+	}
+	return res, nil
+}
+
 func (s *IkuService) GetIndicator(id string) (*entity.IndicatorDefinition, error) {
 	var d entity.IndicatorDefinition
 	if err := s.db.Preload("RegVersion").Where("id = ?", id).First(&d).Error; err != nil {
